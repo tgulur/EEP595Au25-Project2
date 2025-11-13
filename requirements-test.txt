@@ -1,0 +1,22 @@
+# Testing dependencies for CAN IDS project
+
+# Core testing framework
+pytest>=7.0.0
+pytest-cov>=4.0.0  # Coverage reporting
+pytest-xdist>=3.0.0  # Parallel test execution
+pytest-timeout>=2.1.0  # Test timeout handling
+
+# For mocking and fixtures
+pytest-mock>=3.10.0
+
+# Code quality
+flake8>=6.0.0  # Linting
+black>=23.0.0  # Code formatting
+isort>=5.12.0  # Import sorting
+
+# Type checking
+mypy>=1.0.0
+
+# Additional test utilities
+hypothesis>=6.68.0  # Property-based testing
+faker>=18.0.0  # Generate fake data for testing

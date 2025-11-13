@@ -1,0 +1,166 @@
+# Configuration for CAN IDS Project
+
+# Data Settings
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  canmap_path: "data/raw/canmap_voltage"
+  road_path: "data/raw/road_can_ids"
+  
+  # Train/Test split
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_seed: 42
+
+# Voltage Fingerprinting Settings
+voltage:
+  # Feature extraction parameters
+  window_size: 100  # samples
+  overlap: 50  # samples
+  
+  # Voltage features
+  features:
+    - mean
+    - std
+    - min
+    - max
+    - peak_to_peak
+    - rise_time
+    - fall_time
+    - settling_time
+    - overshoot
+    - ringing_frequency
+  
+  # ECU identification
+  num_ecus: 10
+  
+  # Thresholds
+  anomaly_threshold: 0.4  # Adjusted from 0.7 based on testing - balance between detection and false positives
+
+# Deep Learning Settings
+deep_learning:
+  # Model architecture
+  cnn:
+    filters: [64, 128, 256]
+    kernel_size: 3
+    pooling: "max"
+    dropout: 0.3
+  
+  lstm:
+    hidden_units: [128, 64]
+    dropout: 0.2
+    bidirectional: true
+  
+  # Training parameters
+  batch_size: 64  # Increased for better CPU utilization
+  epochs: 50
+  learning_rate: 0.001
+  optimizer: "adam"
+  
+  # Sequence parameters
+  sequence_length: 100
+  
+  # Early stopping
+  patience: 10
+  min_delta: 0.001
+
+# Fusion Layer Settings
+fusion:
+  method: "stacking"  # Options: weighted_average, stacking, voting
+  
+  # Stacking combiner
+  combiner:
+    model: "xgboost"  # Options: xgboost, random_forest, mlp
+    features:
+      - voltage_score
+      - dl_score
+      - voltage_confidence
+      - dl_confidence
+      - trend_voltage
+      - trend_dl
+  
+  # Adaptive weighting
+  adaptive:
+    window_size: 50
+    update_frequency: 10
+
+# Baseline Models
+baselines:
+  timing_based:
+    enabled: true
+    method: "clock_skew"
+    threshold: 0.05
+  
+  frequency_based:
+    enabled: true
+    method: "message_frequency"
+    window_size: 100
+    threshold: 0.3
+
+# Evaluation Metrics
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - tpr
+    - fpr
+    - auc_roc
+    - confusion_matrix
+  
+  # Latency measurement
+  measure_latency: true
+  latency_iterations: 100
+
+# Attack Scenarios
+attacks:
+  types:
+    - spoofing
+    - dos
+    - fuzzing
+    - replay
+    - masquerade
+  
+  # Synthetic attack generation
+  synthetic:
+    enabled: true
+    injection_rate: 0.1  # 10% of messages
+
+# Cross-Vehicle Generalization
+cross_vehicle:
+  enabled: true
+  vehicles: ["vehicle_1", "vehicle_2", "vehicle_3"]
+  train_on: "vehicle_1"
+  test_on: ["vehicle_2", "vehicle_3"]
+
+# Virtual CAN Setup
+vcan:
+  interface: "vcan0"
+  bitrate: 500000  # 500 kbps
+  
+  # Traffic generation
+  traffic:
+    normal_rate: 100  # messages per second
+    attack_rate: 200  # messages per second
+
+# Output Settings
+output:
+  models_path: "models"
+  results_path: "results"
+  logs_path: "logs"
+  
+  # Visualization
+  save_plots: true
+  plot_format: "png"
+  
+  # Model checkpoints
+  save_checkpoints: true
+  checkpoint_frequency: 5  # epochs
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/experiment.log"

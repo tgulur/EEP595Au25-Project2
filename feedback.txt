@@ -1,0 +1,7 @@
+Solid concept: voltage fingerprinting + DL with a fusion layer.
+
+To boost hands-on cybersecurity rigor, add an open-source CAN setup (SocketCAN/vcan) and script for collecting simulated data for spoofing/DoS/fuzzing scenarios; if possible, capture voltage traces with a USB-CAN/MCU.
+
+Define clear metrics (TPR/FPR, latency), compare strong baselines (timing/clock-skew IDS, voltage-only, DL-only), and include a fusion ablation.
+
+Clarify dataset-to-signal alignment and test cross-vehicle generalization (train on one vehicle, test on another).
