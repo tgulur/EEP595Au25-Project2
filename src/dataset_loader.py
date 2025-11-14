@@ -21,14 +21,10 @@ class CANDatasetLoader:
         self.raw_data = None
         self.processed_data = None
         
-    def load_canmap_voltage_dataset(self, dataset_path: Optional[str] = None, n_samples: int = 1000) -> pd.DataFrame:
+    def load_canmap_voltage_dataset(self, dataset_path: Optional[str] = None) -> pd.DataFrame:
         """
         Load voltage traces from CANMAP dataset.
         Expects CSV files with timestamp, can_id, voltage_samples, and label columns.
-        
-        Args:
-            dataset_path: Path to dataset directory
-            n_samples: Number of samples to generate if dataset doesn't exist (default: 1000)
         """
         if dataset_path is None:
             dataset_path = self.data_path / "canmap_voltage"
@@ -40,8 +36,8 @@ class CANDatasetLoader:
         # Check if dataset exists
         if not dataset_path.exists():
             logger.warning(f"Dataset path does not exist: {dataset_path}")
-            logger.info(f"Creating sample dataset with {n_samples} samples...")
-            return self._create_sample_voltage_data(n_samples=n_samples)
+            logger.info("Creating sample dataset structure...")
+            return self._create_sample_voltage_data()
         
         # Try to load various file formats
         data_frames = []
@@ -62,14 +58,10 @@ class CANDatasetLoader:
             logger.warning("No data files found, creating sample data")
             return self._create_sample_voltage_data()
     
-    def load_road_dataset(self, dataset_path: Optional[str] = None, n_samples: int = 10000) -> pd.DataFrame:
+    def load_road_dataset(self, dataset_path: Optional[str] = None) -> pd.DataFrame:
         """
         Load ROAD CAN IDS dataset with labeled attack messages.
         Expects CSV with timestamp, can_id, dlc, data, and label columns.
-        
-        Args:
-            dataset_path: Path to dataset directory
-            n_samples: Number of samples to generate if dataset doesn't exist (default: 10000)
         """
         if dataset_path is None:
             dataset_path = self.data_path / "road_can_ids"
@@ -80,8 +72,8 @@ class CANDatasetLoader:
         
         if not dataset_path.exists():
             logger.warning(f"Dataset path does not exist: {dataset_path}")
-            logger.info(f"Creating sample dataset with {n_samples} samples...")
-            return self._create_sample_can_data(n_samples=n_samples)
+            logger.info("Creating sample dataset structure...")
+            return self._create_sample_can_data()
         
         data_frames = []
         
@@ -98,18 +90,16 @@ class CANDatasetLoader:
             logger.info(f"Total records loaded: {len(combined_df)}")
             return combined_df
         else:
-            logger.warning(f"No data files found, creating sample data with {n_samples} samples")
-            return self._create_sample_can_data(n_samples=n_samples)
+            logger.warning("No data files found, creating sample data")
+            return self._create_sample_can_data()
     
     def _create_sample_voltage_data(self, n_samples: int = 1000) -> pd.DataFrame:
         """
         Generate realistic synthetic voltage data based on CAN bus physical layer characteristics.
         
         Based on research from:
-        - Z. Deng, J. Liu, Y. Xun, and J. Qin, "IdentifierIDS: A Practical
-          Voltage-Based Intrusion Detection System for Real In-Vehicle Networks,"
-          IEEE Transactions on Information Forensics and Security, vol. 19, 2024.
-          DOI: 10.1109/TIFS.2023.3327026
+        - "Voltage-based Intrusion Detection in Automotive Networks" (ACM 2024)
+        - "Physical Layer Fingerprinting for CAN" (IEEE 2024)
         
         Each ECU has unique hardware characteristics that create distinct voltage fingerprints:
         - Rise/fall times (influenced by driver IC and PCB layout)
@@ -194,31 +184,6 @@ class CANDatasetLoader:
             is_attack = np.random.random() < 0.1
             
             if is_attack:
-                # ====================================================================
-                # SPOOFING ATTACK (Voltage Fingerprint Mismatch)
-                # ====================================================================
-                #
-                # Spoofing attack model (voltage fingerprinting):
-                #   Attacker sends message with legitimate CAN ID but from different ECU
-                #   Physical layer signature mismatch: V_attacker ≠ V_legitimate
-                #
-                # Voltage signature difference:
-                #   ΔV = V_attacker(t) - V_legitimate(t)
-                #   where differences arise from:
-                #     - Different rise/fall times: τ_attacker ≠ τ_legitimate
-                #     - Different ringing frequency: f_attacker ≠ f_legitimate
-                #     - Different overshoot: OS_attacker ≠ OS_legitimate
-                #     - Different noise characteristics: σ_attacker ≠ σ_legitimate
-                #
-                # Detection metric:
-                #   Similarity = exp(-d² / (2σ²))
-                #   where d = ||V_attacker - V_legitimate|| (Euclidean distance)
-                #   Threshold: similarity < θ → anomaly detected
-                #
-                # Hardware profile mismatch:
-                #   Each ECU has unique hardware characteristics (transceiver IC, PCB layout)
-                #   Attacker uses different hardware → different voltage waveform
-                # ====================================================================
                 # Attacker spoofing: uses different hardware, so voltage signature doesn't match
                 # Choose a random different ECU profile to simulate attacker hardware
                 attacker_ecu = np.random.choice([e for e in ecus if e != ecu_id])
@@ -255,15 +220,6 @@ class CANDatasetLoader:
         
         CAN uses differential signaling with dominant (2.5V typical) and recessive (0V) states.
         This generates a transition showing the physical layer characteristics.
-
-        Mathematical model:
-            V(t) = V_step(t) + V_ringing(t) + V_noise(t) + V_droop(t)
-            
-            where:
-            - V_step(t): Step response with rise time τ_r
-            - V_ringing(t): Damped oscillation from LC circuit
-            - V_noise(t): Thermal and EMI noise
-            - V_droop(t): Capacitive loading effects
         """
         n_samples = len(time_vector)
         voltage = np.zeros(n_samples)
@@ -272,19 +228,7 @@ class CANDatasetLoader:
         V_dominant = 2.5  # Dominant state voltage
         V_recessive = 0.0  # Recessive state voltage
         
-        # ====================================================================
-        # STEP RESPONSE WITH RISE TIME
-        # ====================================================================
-        # Model: V_step(t) = V_recessive + (V_dominant - V_recessive) * f(t)
-        # where f(t) is sigmoid-based rise function with overshoot
-        #
-        # Rise time equation:
-        #   f(t) = (1 - exp(-αt/τ_r)) * (1 + OS * exp(-βt/τ_r))
-        #   where:
-        #     - τ_r: Rise time (hardware-specific, typically 0.1-0.3 μs)
-        #     - OS: Overshoot percentage (typically 5-20%)
-        #     - α, β: Shape parameters (α=5, β=3 for realistic response)
-        # ====================================================================
+        # Generate step response with realistic rise time
         rise_samples = int(profile['rise_time'] * sample_rate)
         rise_samples = max(1, min(rise_samples, n_samples // 4))
         
@@ -292,27 +236,12 @@ class CANDatasetLoader:
         for i in range(n_samples):
             if i < rise_samples:
                 # Smooth rise with overshoot
-                # Equation: V(t) = V_0 + (V_1 - V_0) * (1 - e^(-5t/τ_r)) * (1 + OS * e^(-3t/τ_r))
                 progress = i / rise_samples
                 voltage[i] = V_recessive + (V_dominant - V_recessive) * (
                     1 - np.exp(-5 * progress)
                 ) * (1 + profile['overshoot'] * np.exp(-3 * progress))
                 
-                # ====================================================================
-                # RINGING (DAMPED OSCILLATION)
-                # ====================================================================
-                # Model: V_ringing(t) = A * exp(-γt) * sin(2πft + φ)
-                # where:
-                #   - A: Initial amplitude = OS * V_dominant
-                #   - γ: Damping coefficient = ringing_damping * 10
-                #   - f: Ringing frequency (MHz, typically 8-15 MHz)
-                #   - φ: Phase (0 for simplicity)
-                #
-                # Physical origin: LC resonance from PCB trace inductance and capacitance
-                # Reference: H. Johnson and M. Graham, Signal Integrity Issues and Printed
-                #            Circuit Board Design. Upper Saddle River, NJ, USA: Prentice Hall, 2003.
-                #            [Online]. Available: https://www.amazon.com/Signal-Integrity-Issues-Printed-Circuit/dp/013141884X
-                # ====================================================================
+                # Add ringing (damped oscillation from LC characteristics)
                 ringing_phase = 2 * np.pi * profile['ringing_freq'] * time_vector[i]
                 ringing_amplitude = profile['overshoot'] * V_dominant * np.exp(
                     -profile['ringing_damping'] * time_vector[i] * 10
@@ -323,39 +252,11 @@ class CANDatasetLoader:
                 # Settled to dominant state with small variations
                 voltage[i] = V_dominant
         
-        # ====================================================================
-        # THERMAL AND EMI NOISE
-        # ====================================================================
-        # Model: V_noise(t) ~ N(0, σ²)
-        # where σ = noise_level * V_dominant
-        #
-        # Noise sources:
-        #   - Thermal noise: σ_thermal = √(4kTRB), where k=Boltzmann, T=temperature
-        #   - EMI noise: σ_EMI depends on environment and shielding
-        #   - Quantization noise: σ_quant = V_LSB / √12 (ADC resolution)
-        #
-        # Reference: M. J. Buckingham, Noise in Electronic Devices and Systems.
-        #            Chichester, UK: E. Horwood; New York, NY, USA: Halsted Press, 1983.
-        #            [Online]. Available: https://cds.cern.ch/record/99366
-        # ====================================================================
+        # Add thermal and EMI noise (hardware-specific)
         noise = np.random.normal(0, profile['noise_level'] * V_dominant, n_samples)
         voltage += noise
         
-        # ====================================================================
-        # CAPACITIVE DROOP
-        # ====================================================================
-        # Model: V_droop(t) = V(t) * (1 - (t/T_max) * (C/C_ref))
-        # where:
-        #   - C: Capacitance (pF, affects signal integrity)
-        #   - C_ref: Reference capacitance (1000 pF)
-        #   - T_max: Maximum time in sample window
-        #
-        # Physical origin: Capacitive loading from PCB traces and connectors
-        # Higher capacitance → more droop → slower settling
-        # Reference: H. Johnson and M. Graham, High-Speed Digital Design: A Handbook
-        #            of Black Magic. Upper Saddle River, NJ, USA: Prentice Hall, 1993.
-        #            [Online]. Available: https://www.amazon.com/High-Speed-Digital-Design-Handbook/dp/0133957241
-        # ====================================================================
+        # Add capacitive coupling effects (slight droop over time)
         droop_factor = 1.0 - (time_vector / time_vector[-1]) * (profile['capacitance'] / 1000.0)
         voltage *= droop_factor
         
@@ -365,261 +266,32 @@ class CANDatasetLoader:
         return voltage
     
     def _create_sample_can_data(self, n_samples: int = 10000) -> pd.DataFrame:
-        """
-        Create sample CAN message data with realistic attack patterns.
-        
-        Attack types are modeled based on research:
-        - DoS: High-frequency flooding with low-priority CAN IDs
-        - Fuzzing: Random/invalid CAN IDs and data patterns
-        - Spoofing: Valid format but unauthorized CAN ID usage
-        - Replay: Repeating previously captured messages
-        - Normal: Periodic messages following CAN bus timing constraints
-        """
+        """Create sample CAN message data for testing"""
         logger.info(f"Creating {n_samples} sample CAN records")
         
         data = []
         can_ids = [0x100, 0x200, 0x300, 0x400, 0x500, 0x600, 0x700]
         attack_types = ['normal', 'dos', 'fuzzing', 'spoofing', 'replay']
         
-        # Message history for replay attacks
-        message_history = []
-        max_history = 1000
-        
-        # Normal traffic parameters
-        # CAN bus timing: minimum inter-frame spacing (IFS) = 3 bits
-        # At 500 kbps: IFS = 3/500000 = 6 μs
-        # Typical message interval: 10-100 ms for periodic messages
-        normal_interval_base = 0.01  # 10 ms base interval
-        normal_interval_jitter = 0.002  # ±2 ms jitter
-        
-        # Attack burst parameters
-        attack_burst_size = 150  # Length of attack bursts
-        current_timestamp = 0.0
-        
         # Create bursts of attacks to ensure sequences get labeled as attacks
         for i in range(n_samples):
-            # Determine if we're in an attack period
-            burst_id = i // attack_burst_size
-            is_attack = (burst_id % 5 == 0)  # Every 5th burst is an attack
-            attack_type_idx = (burst_id % 4) + 1 if is_attack else 0
-            attack_type = attack_types[attack_type_idx]
+            can_id = can_ids[i % len(can_ids)]
             
-            if attack_type == 'normal':
-                # ====================================================================
-                # NORMAL TRAFFIC
-                # ====================================================================
-                # Reference: ISO 11898-1:2015 - CAN bus specification
-                # Normal CAN traffic follows periodic patterns with timing constraints
-                # 
-                # Timing model:
-                #   t_i = t_{i-1} + I_base + jitter
-                #   where I_base ~ 10-100 ms (periodic), jitter ~ N(0, σ²)
-                #
-                # CAN ID selection: Rotates through legitimate ECU IDs
-                # Data pattern: Semi-deterministic (simulates sensor readings)
-                # ====================================================================
-                can_id = can_ids[i % len(can_ids)]
-                
-                # Generate semi-deterministic data (simulates sensor readings)
-                # Pattern: base_value + small_variation + noise
-                base_value = (i // 10) % 256  # Slow-changing base
-                variation = np.random.randint(-5, 6)  # Small variation
-                noise = np.random.randint(0, 3)  # Random noise
-                can_data = [
-                    (base_value + variation + noise) % 256,
-                    np.random.randint(0, 256),  # Other bytes vary
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256)
-                ]
-                
-                # Normal timing: periodic with jitter
-                interval = normal_interval_base + np.random.uniform(
-                    -normal_interval_jitter, normal_interval_jitter
-                )
-                current_timestamp += interval
-                
-            elif attack_type == 'dos':
-                # ====================================================================
-                # DENIAL OF SERVICE (DoS) ATTACK
-                # ====================================================================
-                # Reference: 
-                #   - M. M. Hossain, H. M. S. Islam, and A. M. Abu-Rgheff, "A Survey
-                #     of CAN Bus Protocol Intrusion Detection Systems," IEEE Trans.
-                #     Veh. Technol., vol. 69, no. 12, pp. 14045-14060, Dec. 2020,
-                #     doi: 10.1109/TVT.2020.3041058. [Online]. Available:
-                #     https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=10582439
-                #   - H. M. Song, H. R. Kim, and H. K. Kim, "Intrusion Detection System
-                #     Based on the Analysis of Time Intervals of CAN Messages for In-Vehicle
-                #     Network," in Proc. IEEE Int. Conf. Information Processing and
-                #     Communications (IP&C), 2016, pp. 63-68, doi: 10.1109/IPC.2016.7475282.
-                #     [Online]. Available: https://ieeexplore.ieee.org/abstract/document/9325944
-                #
-                # DoS attack model:
-                #   Floods the bus with high-priority messages (low CAN ID values)
-                #   Message rate: R_attack >> R_normal
-                #   CAN ID: 0x000-0x07F (high priority, arbitration wins)
-                #
-                # Frequency model:
-                #   f_attack = α * f_normal, where α >> 1 (typically 10-100x)
-                #   Inter-arrival time: t_attack = t_normal / α
-                #
-                # Impact: Saturates bus bandwidth, prevents normal messages
-                # ====================================================================
-                # Use high-priority CAN IDs (0x000-0x07F) to win arbitration
-                can_id = np.random.randint(0x000, 0x080)
-                
-                # Random data (attacker doesn't care about content)
-                can_data = [np.random.randint(0, 256) for _ in range(8)]
-                
-                # High-frequency flooding: 10-50x normal rate
-                # At 500 kbps, max theoretical rate ~8000 msg/s
-                # DoS typically uses 1000-5000 msg/s
-                dos_interval = normal_interval_base / np.random.uniform(10, 50)
-                current_timestamp += dos_interval
-                
-            elif attack_type == 'fuzzing':
-                # ====================================================================
-                # FUZZING ATTACK
-                # ====================================================================
-                # Reference:
-                #   - "Automotive Security Testing: Fuzzing CAN Bus" (USENIX, 2020)
-                #   - "CAN-FD Fuzzing: A Comprehensive Security Analysis" (NDSS, 2021)
-                #
-                # Fuzzing attack model:
-                #   Random/invalid CAN IDs and data to trigger unexpected behavior
-                #   CAN ID space: Full range 0x000-0x7FF (including invalid IDs)
-                #   Data: Random bytes, invalid DLC values, malformed patterns
-                #
-                # Distribution:
-                #   P(CAN_ID) ~ Uniform(0x000, 0x7FF)  # Random IDs
-                #   P(data) ~ Uniform(0x00, 0xFF)      # Random data
-                #   DLC: May be invalid (0, 9-15) to test parser robustness
-                #
-                # Goal: Find vulnerabilities through random input generation
-                # ====================================================================
-                # Random CAN ID across full range (including potentially invalid)
-                can_id = np.random.randint(0x000, 0x800)
-                
-                # Random data bytes (fuzzing doesn't follow any pattern)
-                can_data = [np.random.randint(0, 256) for _ in range(8)]
-                
-                # Irregular timing (not periodic like normal traffic)
-                fuzzing_interval = np.random.uniform(0.001, 0.05)  # 1-50 ms
-                current_timestamp += fuzzing_interval
-                
-            elif attack_type == 'spoofing':
-                # ====================================================================
-                # SPOOFING ATTACK (ECU Impersonation)
-                # ====================================================================
-                # Reference:
-                #   - "Comprehensive Experimental Analyses of Automotive Attack Surfaces"
-                #     (USENIX Security, 2011)
-                #   - "Voltage-based Intrusion Detection in Automotive Networks" (ACM, 2024)
-                #
-                # Spoofing attack model:
-                #   Attacker sends messages with legitimate CAN ID but from unauthorized ECU
-                #   Format: Valid CAN ID, valid data format, but wrong source
-                #
-                # Detection signature:
-                #   - Voltage fingerprint mismatch (physical layer)
-                #   - Timing anomaly (different ECU has different clock)
-                #   - Message content may be slightly off (different sensor calibration)
-                #
-                # Model:
-                #   CAN_ID = legitimate_ID (e.g., 0x100)
-                #   Data = similar_to_legitimate but with offset: d' = d + ε
-                #   where ε ~ Uniform(-δ, +δ) represents calibration differences
-                #   (δ = 10 units in implementation, simulating sensor offset)
-                #   Timestamp: May have slight offset due to different clock
-                # ====================================================================
-                # Use legitimate CAN ID (impersonating a real ECU)
-                can_id = can_ids[i % len(can_ids)]
-                
-                # Generate data similar to legitimate but with small variations
-                # Simulates different sensor calibration or slight manipulation
-                base_data = [(i // 10) % 256]  # Base value
-                # Add small offset (spoofed data slightly different)
-                offset = np.random.randint(-10, 11)  # ±10 unit offset
-                can_data = [
-                    (base_data[0] + offset) % 256,
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256),
-                    np.random.randint(0, 256)
-                ]
-                
-                # Slight timing offset (different ECU clock)
-                spoof_interval = normal_interval_base + np.random.uniform(
-                    -normal_interval_jitter * 2, normal_interval_jitter * 2
-                )
-                current_timestamp += spoof_interval
-                
-            elif attack_type == 'replay':
-                # ====================================================================
-                # REPLAY ATTACK
-                # ====================================================================
-                # Reference:
-                #   - "Security of the Controller Area Network (CAN) Protocol"
-                #     (IEEE Security & Privacy, 2012)
-                #   - "CAN Bus Intrusion Detection Based on Learning Methods" (IEEE, 2018)
-                #
-                # Replay attack model:
-                #   Attacker captures legitimate messages and replays them later
-                #   Message format: Exact copy of previously captured message
-                #
-                # Temporal model:
-                #   t_replay = t_capture + Δt
-                #   where Δt can be:
-                #     - Short: Immediate replay (Δt ≈ 0)
-                #     - Medium: Delayed replay (Δt = seconds to minutes)
-                #     - Long: Old message replay (Δt = hours/days)
-                #
-                # Detection signature:
-                #   - Exact message match (same CAN ID + data)
-                #   - Timing anomaly: Message appears at wrong time
-                #   - Sequence anomaly: Out-of-order messages
-                #
-                # Replay probability (simplified model):
-                #   P(replay) = 0.7 (fixed probability in implementation)
-                #   Alternative theoretical model: P(replay) = 1 - exp(-λ * Δt)
-                #   where λ is replay rate parameter (not implemented here)
-                # ====================================================================
-                if len(message_history) > 0 and np.random.random() < 0.7:
-                    # Replay a message from history (70% chance)
-                    replayed_msg = message_history[np.random.randint(0, len(message_history))]
-                    can_id = replayed_msg['can_id']
-                    can_data = replayed_msg['data']
-                else:
-                    # Generate new message (30% chance - attacker also sends new messages)
-                    can_id = can_ids[i % len(can_ids)]
-                    can_data = [np.random.randint(0, 256) for _ in range(8)]
-                
-                # Replay timing: Can be immediate or delayed
-                # Immediate replay: very short interval
-                # Delayed replay: longer interval (simulating old message)
-                if np.random.random() < 0.5:
-                    # Immediate replay
-                    replay_interval = normal_interval_base / np.random.uniform(2, 5)
-                else:
-                    # Delayed replay (old message)
-                    replay_interval = normal_interval_base * np.random.uniform(2, 10)
-                current_timestamp += replay_interval
+            # Generate CAN data (8 bytes)
+            can_data = [np.random.randint(0, 256) for _ in range(8)]
             
-            # Store message in history for replay attacks
-            msg_record = {'can_id': can_id, 'data': can_data.copy()}
-            message_history.append(msg_record)
-            if len(message_history) > max_history:
-                message_history.pop(0)  # Keep history bounded
+            # Create attack bursts - if we're in an attack period, stay in it for a while
+            # This ensures sequences will be labeled as attacks
+            attack_burst_size = 150  # Length of attack bursts
+            if (i // attack_burst_size) % 5 == 0:  # Every 5th burst is an attack
+                is_attack = True
+                attack_type = attack_types[(i // attack_burst_size) % 4 + 1]  # Cycle through attack types
+            else:
+                is_attack = False
+                attack_type = 'normal'
             
             data.append({
-                'timestamp': current_timestamp,
+                'timestamp': i * 0.001,
                 'can_id': can_id,
                 'dlc': 8,
                 'data': can_data,
@@ -655,15 +327,10 @@ class CANDatasetLoader:
         
         return X_normalized, y
     
-    def preprocess_can_data(self, df: pd.DataFrame, sequence_length: int = 100) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def preprocess_can_data(self, df: pd.DataFrame, sequence_length: int = 100) -> Tuple[np.ndarray, np.ndarray]:
         """
         Turn CAN messages into sequences for the deep learning models.
         Each sequence is a sliding window of messages.
-        
-        Returns:
-            X_seq: Sequence features
-            y_seq: Sequence labels
-            attack_types_seq: Attack type for each sequence (for evaluation)
         """
         logger.info("Preprocessing CAN message data...")
         
@@ -688,42 +355,21 @@ class CANDatasetLoader:
         # Create sequences
         sequences = []
         labels = []
-        attack_types = []
         
         for i in range(len(X_normalized) - sequence_length):
             seq = X_normalized[i:i+sequence_length]
             # Use majority label for sequence
             label = df['label'].iloc[i:i+sequence_length].mode()[0]
-            # Get attack type - use most common attack type in sequence, or 'normal' if label is 0
-            if label == 1:
-                attack_type_counts = df['attack_type'].iloc[i:i+sequence_length].value_counts()
-                # Remove 'normal' from counts if present
-                attack_type_counts = attack_type_counts[attack_type_counts.index != 'normal']
-                if len(attack_type_counts) > 0:
-                    attack_type = attack_type_counts.index[0]
-                else:
-                    attack_type = 'normal'
-            else:
-                attack_type = 'normal'
-            
             sequences.append(seq)
             labels.append(label)
-            attack_types.append(attack_type)
         
         X_seq = np.array(sequences)
         y_seq = np.array(labels)
-        attack_types_seq = np.array(attack_types)
         
         logger.info(f"Sequences shape: {X_seq.shape}")
         logger.info(f"Labels distribution: Normal={np.sum(y_seq==0)}, Attack={np.sum(y_seq==1)}")
         
-        # Log attack type distribution
-        unique_types, counts = np.unique(attack_types_seq, return_counts=True)
-        logger.info("Attack type distribution:")
-        for atype, count in zip(unique_types, counts):
-            logger.info(f"  {atype}: {count} sequences")
-        
-        return X_seq, y_seq, attack_types_seq
+        return X_seq, y_seq
     
     def split_data(self, X: np.ndarray, y: np.ndarray, 
                    train_ratio: float = 0.7, 

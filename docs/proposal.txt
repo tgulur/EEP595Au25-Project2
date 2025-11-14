@@ -1,0 +1,35 @@
+Deep Learning and Voltage Fingerprinting for Advanced Intrusion Detection on Automotive CAN Networks
+Tejas Gulur
+Keerthi Pobba
+Bryan Gonzalez
+Introduction
+As vehicles become increasingly computerized, securing their in-vehicle networks is critical for both safety and privacy. The Controller Area Network (CAN) bus, despite being essential for automotive communication, was not designed with strong security in mind. As a result, attacks that inject forged messages, disrupt normal communication, or impersonate legitimate Electronic Control Units (ECUs) have become real threats. While traditional detection methods focus primarily on timing analysis, skilled adversaries are finding ways to evade these systems.
+Objectives
+This project aims to design and evaluate an advanced intrusion detection system (IDS) for CAN networks by integrating two promising approaches:
+Voltage fingerprinting: By analyzing the subtle, device-specific voltage signatures of CAN messages, the IDS can identify the true source of a message, providing a physical-layer barrier against spoofing attempts.
+Deep learning-based analyzers: Modern neural networks, such as Convolutional Neural Networks (CNNs) and Long Short-Term Memory (LSTM) networks, will be trained to recognize complex and previously unseen attack patterns by learning from large-scale, realistic datasets.
+Signal Integration Layer: Develop a decision level integration layer that merges voltage fingerprinting and deep learning signals into a single score with a unified threshold and alert policy. Evaluates a stacking combiner of both scores, confidences, and short term trends to learn an adaptive weighting.
+Approach
+We will leverage open-access datasets, including the CAN Bus Voltage Dataset and the ROAD CAN IDS Dataset, to ensure both physical signal traces and annotated attack traffic are available for experimentation. The project will develop, train, and rigorously evaluate both voltage-based and deep learning IDS components in isolation and as a hybrid architecture. The system will be validated against a variety of realistic attack scenarios, from common denial-of-service and fuzzing to advanced spoofing and cloaking.
+Significance and Impact
+This research will help address a clear need in automotive cybersecurity for defenses that work at both the physical and data layers. By combining voltage fingerprinting and deep learning, the proposed IDS will set a new benchmark for detection accuracy and resilience, even as attacks grow more sophisticated.
+
+Work Plan and Team Responsibilities
+Week 1: Literature review, dataset acquisition (All)
+Week 2: Voltage feature extraction prototype (Keerthi)
+Week 3: Deep learning data pre-processing, CNN/LSTM baseline model (Tejas, Bryan)
+Week 4: Integration/fusion module and benchmarking (All)
+Week 5: Stress testing, result documentation (Bryan)
+Deliverables: Code repository, experiment log, final report, annotated references.
+Risks & Mitigation
+Dataset Limitations: If public datasets lack attack diversity, augment via CAN simulation tools and synthetic attacks.
+Model Overfitting: Employ cross-validation and adversarial/noise robustness testing.
+References
+Guiqi Zhang and Yufeng Li. 2024. Voltage inspector: Sender identification for in-vehicle CAN bus using voltage slice. Comput. Secur. 145, C (Oct 2024). https://doi.org/10.1016/j.cose.2024.104017
+
+M. Zhang, J. Li, Y. Lai, S. Huan and W. Shang, "A Lightweight Voltage-Based ECU Fingerprint Intrusion Detection System for In-Vehicle CAN Bus," in IEEE Transactions on Vehicular Technology, vol. 74, no. 10, pp. 15536-15548, Oct. 2025, doi: 10.1109/TVT.2025.3570961.
+keywords: {Fingerprint recognition;Feature extraction;Intrusion detection;Controller area networks;Physical layer;Object recognition;Training;Standards;Protocols;Fault tolerant systems;Controller Area Network (CAN);Electronic Control Unit (ECU);physical fingerprint;ECU identification;intrusion detection},
+Z. Xu et al., “Deep learning-based Intrusion Detection Systems: A survey,” arXiv.org, https://arxiv.org/abs/2504.07839 (accessed Oct. 31, 2025). 
+Saravanan R, Balaji S, Ganesan M, Braveen M, Perumal RS. Optimal attention deep learning based in-vehicle intrusion detection and classification model on CAN messages. Sci Rep. 2025 Sep 30;15(1):33952. doi: 10.1038/s41598-025-10637-3. PMID: 41028136; PMCID: PMC12485086.
+
+Ashton McEntarffer, Linxi Zhang, Yu Wei Liu, and Mert Pesé. 2025. Towards a Comprehensive Evaluation of Voltage-Based Fingerprinting for the CAN Bus. Proceedings of the 40th ACM/SIGAPP Symposium on Applied Computing. Association for Computing Machinery, New York, NY, USA, 1886–1893. https://doi.org/10.1145/3672608.3707981

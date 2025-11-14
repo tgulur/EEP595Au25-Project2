@@ -48,12 +48,9 @@ models/*.joblib
 
 # Results and logs
 results/*
-logs/
-*.log
+logs/*
 !results/.gitkeep
-
-# Documentation
-docs/
+!logs/.gitkeep
 
 # IDE
 .vscode/

@@ -62,12 +62,11 @@ class TestDatasetLoader:
         """Test CAN data preprocessing"""
         loader = CANDatasetLoader("data/raw")
         df = loader._create_sample_can_data(n_samples=200)
-        X, y, attack_types = loader.preprocess_can_data(df, sequence_length=10)
+        X, y = loader.preprocess_can_data(df, sequence_length=10)
         
         assert X.shape[1] == 10  # sequence length
         assert len(X.shape) == 3
         assert y.shape[0] == X.shape[0]
-        assert len(attack_types) == len(y)  # Attack types should match sequences
     
     def test_data_splitting(self):
         """Test train/val/test splitting"""
