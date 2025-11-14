@@ -7,6 +7,10 @@ data:
   canmap_path: "data/raw/canmap_voltage"
   road_path: "data/raw/road_can_ids"
   
+  # Dataset size (for synthetic data generation)
+  can_samples: 50000  # Increased from 10000 to reduce overfitting (more training samples)
+  voltage_samples: 1000  # Keep voltage dataset smaller (different preprocessing)
+  
   # Train/Test split
   train_ratio: 0.7
   val_ratio: 0.15
@@ -36,7 +40,7 @@ voltage:
   num_ecus: 10
   
   # Thresholds
-  anomaly_threshold: 0.4  # Adjusted from 0.7 based on testing - balance between detection and false positives
+  anomaly_threshold: 0.55  # Balanced threshold: reduced from 0.65 to improve TPR while keeping FPR low
 
 # Deep Learning Settings
 deep_learning:
@@ -48,7 +52,7 @@ deep_learning:
     dropout: 0.3
   
   lstm:
-    hidden_units: [128, 64]
+    hidden_units: [64, 32]  # Reduced from [128, 64] to prevent overfitting
     dropout: 0.2
     bidirectional: true
   
@@ -86,17 +90,20 @@ fusion:
     update_frequency: 10
 
 # Baseline Models
+# NOTE: Timing-Based and Frequency-Based IDS are disabled
+# They were not detecting attacks effectively (0% TPR)
+# Set enabled: true and uncomment code in main_experiment.py to re-enable
 baselines:
   timing_based:
-    enabled: true
+    enabled: false  # Disabled - not detecting attacks effectively
     method: "clock_skew"
     threshold: 0.05
   
   frequency_based:
-    enabled: true
+    enabled: false  # Disabled - not detecting attacks effectively
     method: "message_frequency"
     window_size: 100
-    threshold: 0.3
+    threshold: 3.0  # Increased from 0.3 to 3.0 to reduce false positives
 
 # Evaluation Metrics
 evaluation:

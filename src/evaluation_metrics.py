@@ -352,6 +352,16 @@ class IDSEvaluator:
             predictions_dict: Dictionary of model_name -> predictions
             save_name: Filename to save plot
         """
+        # Validate array sizes match
+        y_true_len = len(y_true)
+        for model_name, y_pred in predictions_dict.items():
+            if len(y_pred) != y_true_len:
+                raise ValueError(
+                    f"Array size mismatch in plot_detection_heatmap: "
+                    f"y_true has {y_true_len} samples, but {model_name} predictions have {len(y_pred)} samples. "
+                    f"Please align arrays to the same size before calling this function."
+                )
+        
         # Find attack indices
         attack_indices = np.where(y_true == 1)[0]
         
@@ -418,6 +428,18 @@ class IDSEvaluator:
             y_true: True labels
             save_name: Filename to save plot
         """
+        # Validate array sizes match
+        y_true_len = len(y_true)
+        for model_name, model_data in results_dict.items():
+            if 'predictions' in model_data:
+                y_pred = model_data['predictions']
+                if len(y_pred) != y_true_len:
+                    raise ValueError(
+                        f"Array size mismatch in plot_comprehensive_comparison: "
+                        f"y_true has {y_true_len} samples, but {model_name} predictions have {len(y_pred)} samples. "
+                        f"Please align arrays to the same size before calling this function."
+                    )
+        
         models = list(results_dict.keys())
         n_models = len(models)
         
@@ -650,6 +672,587 @@ Additional Metrics:
             logger.info(f"Report saved to {save_path}")
         
         return report
+    
+    def evaluate_by_attack_type(self, y_true: np.ndarray, y_pred: np.ndarray,
+                                attack_types: np.ndarray,
+                                y_score: Optional[np.ndarray] = None) -> Dict[str, Dict[str, float]]:
+        """
+        Evaluate performance for each attack type separately.
+        
+        Args:
+            y_true: True labels
+            y_pred: Predicted labels
+            attack_types: Attack type for each sample ('normal', 'spoofing', 'dos', etc.)
+            y_score: Optional confidence scores
+            
+        Returns:
+            Dictionary mapping attack type to metrics
+        """
+        results = {}
+        
+        # Get unique attack types
+        unique_types = np.unique(attack_types)
+        
+        for attack_type in unique_types:
+            # Create mask for this attack type
+            mask = attack_types == attack_type
+            
+            if np.sum(mask) == 0:
+                continue
+            
+            # Get subset of data for this attack type
+            y_true_subset = y_true[mask]
+            y_pred_subset = y_pred[mask]
+            y_score_subset = y_score[mask] if y_score is not None else None
+            
+            # Calculate metrics for this attack type
+            metrics = self.calculate_metrics(y_true_subset, y_pred_subset, y_score_subset)
+            
+            # Add sample count
+            metrics['sample_count'] = int(np.sum(mask))
+            metrics['attack_count'] = int(np.sum(y_true_subset == 1))
+            metrics['normal_count'] = int(np.sum(y_true_subset == 0))
+            
+            results[attack_type] = metrics
+        
+        return results
+    
+    def generate_attack_type_report(self, attack_type_results: Dict[str, Dict[str, float]],
+                                   save_name: Optional[str] = None) -> str:
+        """
+        Generate a report showing performance for each attack type.
+        
+        Args:
+            attack_type_results: Results from evaluate_by_attack_type
+            save_name: Optional filename to save report
+            
+        Returns:
+            Report string
+        """
+        report = f"""
+{'='*80}
+PER-ATTACK-TYPE EVALUATION REPORT
+{'='*80}
+
+"""
+        
+        # Create table
+        report += f"{'Attack Type':<15} {'Samples':<10} {'Attacks':<10} {'Accuracy':<12} {'TPR':<10} {'FPR':<10} {'Precision':<12} {'Recall':<10} {'F1-Score':<10}\n"
+        report += "-" * 80 + "\n"
+        
+        for attack_type, metrics in sorted(attack_type_results.items()):
+            samples = metrics.get('sample_count', 0)
+            attacks = metrics.get('attack_count', 0)
+            accuracy = metrics.get('accuracy', 0)
+            tpr = metrics.get('true_positive_rate', metrics.get('tpr', 0))
+            fpr = metrics.get('false_positive_rate', metrics.get('fpr', 0))
+            precision = metrics.get('precision', 0)
+            recall = metrics.get('recall', 0)
+            f1 = metrics.get('f1_score', 0)
+            
+            report += f"{attack_type:<15} {samples:<10} {attacks:<10} {accuracy:<12.4f} {tpr:<10.4f} {fpr:<10.4f} {precision:<12.4f} {recall:<10.4f} {f1:<10.4f}\n"
+        
+        report += "\n" + "="*80 + "\n"
+        report += "\nDetailed Metrics by Attack Type:\n"
+        report += "="*80 + "\n\n"
+        
+        for attack_type, metrics in sorted(attack_type_results.items()):
+            report += f"\n{attack_type.upper()}:\n"
+            report += f"  Samples:        {metrics.get('sample_count', 0)}\n"
+            report += f"  Attacks:        {metrics.get('attack_count', 0)}\n"
+            report += f"  Normal:         {metrics.get('normal_count', 0)}\n"
+            report += f"  Accuracy:       {metrics.get('accuracy', 0):.4f}\n"
+            report += f"  Precision:      {metrics.get('precision', 0):.4f}\n"
+            report += f"  Recall (TPR):   {metrics.get('recall', metrics.get('true_positive_rate', 0)):.4f}\n"
+            report += f"  F1-Score:      {metrics.get('f1_score', 0):.4f}\n"
+            report += f"  TPR:            {metrics.get('true_positive_rate', metrics.get('tpr', 0)):.4f}\n"
+            report += f"  FPR:            {metrics.get('false_positive_rate', metrics.get('fpr', 0)):.4f}\n"
+            
+            if 'roc_auc' in metrics:
+                report += f"  ROC AUC:        {metrics['roc_auc']:.4f}\n"
+            
+            report += f"  TP:             {metrics.get('true_positive', 0)}\n"
+            report += f"  TN:             {metrics.get('true_negative', 0)}\n"
+            report += f"  FP:             {metrics.get('false_positive', 0)}\n"
+            report += f"  FN:             {metrics.get('false_negative', 0)}\n"
+        
+        report += "\n" + "="*80 + "\n"
+        
+        if save_name:
+            save_path = self.save_dir / save_name
+            with open(save_path, 'w') as f:
+                f.write(report)
+            logger.info(f"Attack type report saved to {save_path}")
+        
+        return report
+    
+    def plot_attack_type_comparison(self, attack_type_results_dict: Dict[str, Dict[str, Dict[str, float]]],
+                                   save_name: Optional[str] = None):
+        """
+        Create comprehensive visualizations comparing models across attack types.
+        
+        Args:
+            attack_type_results_dict: Dictionary mapping model names to their attack_type_results
+                                     e.g., {'CNN': {...}, 'LSTM': {...}, 'Fusion': {...}}
+            save_name: Optional filename to save visualization
+        """
+        import re
+        
+        # Parse attack type results from text reports if needed
+        # If results are already dictionaries, use them directly
+        models_data = {}
+        
+        for model_name, results in attack_type_results_dict.items():
+            if isinstance(results, str):
+                # Parse from text file
+                results = self._parse_attack_type_report(results)
+            models_data[model_name] = results
+        
+        # Get all unique attack types across all models
+        all_attack_types = set()
+        for model_results in models_data.values():
+            all_attack_types.update(model_results.keys())
+        all_attack_types = sorted([at for at in all_attack_types if at.lower() != 'normal'])
+        
+        # Create comprehensive figure with multiple subplots
+        fig = plt.figure(figsize=(20, 12))
+        gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+        
+        # Color scheme
+        model_colors = {
+            'CNN': '#FF6B6B',
+            'LSTM': '#4ECDC4',
+            'Fusion': '#45B7D1',
+            'Voltage': '#FFA07A'
+        }
+        
+        # Plot 1: TPR by Attack Type (Bar Chart)
+        ax1 = fig.add_subplot(gs[0, 0])
+        x = np.arange(len(all_attack_types))
+        width = 0.25
+        offset = 0
+        
+        for model_name in sorted(models_data.keys()):
+            tprs = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    tpr = models_data[model_name][attack_type].get('true_positive_rate', 
+                                                                    models_data[model_name][attack_type].get('tpr', 0))
+                else:
+                    tpr = 0
+                tprs.append(tpr)
+            
+            color = model_colors.get(model_name, '#95A5A6')
+            ax1.bar(x + offset * width, tprs, width, label=model_name, color=color, alpha=0.8)
+            offset += 1
+        
+        ax1.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax1.set_ylabel('True Positive Rate (TPR)', fontsize=11, fontweight='bold')
+        ax1.set_title('Attack Detection Rate (TPR) by Attack Type', fontsize=12, fontweight='bold')
+        ax1.set_xticks(x + width * (len(models_data) - 1) / 2)
+        ax1.set_xticklabels(all_attack_types, rotation=45, ha='right')
+        ax1.set_ylim([0, 1.1])
+        ax1.legend()
+        ax1.grid(axis='y', alpha=0.3)
+        
+        # Plot 2: FPR by Attack Type (Bar Chart)
+        ax2 = fig.add_subplot(gs[0, 1])
+        offset = 0
+        
+        for model_name in sorted(models_data.keys()):
+            fprs = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    fpr = models_data[model_name][attack_type].get('false_positive_rate',
+                                                                    models_data[model_name][attack_type].get('fpr', 0))
+                else:
+                    fpr = 0
+                fprs.append(fpr)
+            
+            color = model_colors.get(model_name, '#95A5A6')
+            ax2.bar(x + offset * width, fprs, width, label=model_name, color=color, alpha=0.8)
+            offset += 1
+        
+        ax2.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax2.set_ylabel('False Positive Rate (FPR)', fontsize=11, fontweight='bold')
+        ax2.set_title('False Positive Rate (FPR) by Attack Type', fontsize=12, fontweight='bold')
+        ax2.set_xticks(x + width * (len(models_data) - 1) / 2)
+        ax2.set_xticklabels(all_attack_types, rotation=45, ha='right')
+        ax2.set_ylim([0, max(0.1, max([max([models_data[m][at].get('false_positive_rate', 
+                                                                      models_data[m][at].get('fpr', 0)) 
+                                             for at in all_attack_types if at in models_data[m]]) 
+                                        for m in models_data.keys()]) * 1.2)])
+        ax2.legend()
+        ax2.grid(axis='y', alpha=0.3)
+        
+        # Plot 3: Accuracy by Attack Type
+        ax3 = fig.add_subplot(gs[0, 2])
+        offset = 0
+        
+        for model_name in sorted(models_data.keys()):
+            accuracies = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    acc = models_data[model_name][attack_type].get('accuracy', 0)
+                else:
+                    acc = 0
+                accuracies.append(acc)
+            
+            color = model_colors.get(model_name, '#95A5A6')
+            ax3.bar(x + offset * width, accuracies, width, label=model_name, color=color, alpha=0.8)
+            offset += 1
+        
+        ax3.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax3.set_ylabel('Accuracy', fontsize=11, fontweight='bold')
+        ax3.set_title('Accuracy by Attack Type', fontsize=12, fontweight='bold')
+        ax3.set_xticks(x + width * (len(models_data) - 1) / 2)
+        ax3.set_xticklabels(all_attack_types, rotation=45, ha='right')
+        ax3.set_ylim([0, 1.1])
+        ax3.legend()
+        ax3.grid(axis='y', alpha=0.3)
+        
+        # Plot 4: Heatmap - TPR across models and attack types
+        ax4 = fig.add_subplot(gs[1, 0])
+        heatmap_data_tpr = []
+        model_names_sorted = sorted(models_data.keys())
+        
+        for model_name in model_names_sorted:
+            row = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    tpr = models_data[model_name][attack_type].get('true_positive_rate',
+                                                                   models_data[model_name][attack_type].get('tpr', 0))
+                else:
+                    tpr = 0
+                row.append(tpr)
+            heatmap_data_tpr.append(row)
+        
+        sns.heatmap(heatmap_data_tpr, annot=True, fmt='.3f', cmap='RdYlGn',
+                    xticklabels=all_attack_types, yticklabels=model_names_sorted,
+                    cbar_kws={'label': 'TPR'}, ax=ax4, vmin=0, vmax=1.0)
+        ax4.set_title('True Positive Rate Heatmap', fontsize=12, fontweight='bold')
+        ax4.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax4.set_ylabel('Model', fontsize=11, fontweight='bold')
+        
+        # Plot 5: Heatmap - FPR across models and attack types
+        ax5 = fig.add_subplot(gs[1, 1])
+        heatmap_data_fpr = []
+        
+        for model_name in model_names_sorted:
+            row = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    fpr = models_data[model_name][attack_type].get('false_positive_rate',
+                                                                   models_data[model_name][attack_type].get('fpr', 0))
+                else:
+                    fpr = 0
+                row.append(fpr)
+            heatmap_data_fpr.append(row)
+        
+        max_fpr = max([max(row) for row in heatmap_data_fpr]) if heatmap_data_fpr else 0.1
+        sns.heatmap(heatmap_data_fpr, annot=True, fmt='.4f', cmap='YlOrRd',
+                    xticklabels=all_attack_types, yticklabels=model_names_sorted,
+                    cbar_kws={'label': 'FPR'}, ax=ax5, vmin=0, vmax=max(0.1, max_fpr))
+        ax5.set_title('False Positive Rate Heatmap', fontsize=12, fontweight='bold')
+        ax5.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax5.set_ylabel('Model', fontsize=11, fontweight='bold')
+        
+        # Plot 6: Heatmap - Accuracy across models and attack types
+        ax6 = fig.add_subplot(gs[1, 2])
+        heatmap_data_acc = []
+        
+        for model_name in model_names_sorted:
+            row = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    acc = models_data[model_name][attack_type].get('accuracy', 0)
+                else:
+                    acc = 0
+                row.append(acc)
+            heatmap_data_acc.append(row)
+        
+        sns.heatmap(heatmap_data_acc, annot=True, fmt='.3f', cmap='RdYlGn',
+                    xticklabels=all_attack_types, yticklabels=model_names_sorted,
+                    cbar_kws={'label': 'Accuracy'}, ax=ax6, vmin=0, vmax=1.0)
+        ax6.set_title('Accuracy Heatmap', fontsize=12, fontweight='bold')
+        ax6.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax6.set_ylabel('Model', fontsize=11, fontweight='bold')
+        
+        # Plot 7: TPR vs FPR Scatter (one point per model-attack combination)
+        ax7 = fig.add_subplot(gs[2, 0])
+        for model_name in model_names_sorted:
+            tprs = []
+            fprs = []
+            labels = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    tpr = models_data[model_name][attack_type].get('true_positive_rate',
+                                                                    models_data[model_name][attack_type].get('tpr', 0))
+                    fpr = models_data[model_name][attack_type].get('false_positive_rate',
+                                                                    models_data[model_name][attack_type].get('fpr', 0))
+                    tprs.append(tpr)
+                    fprs.append(fpr)
+                    labels.append(attack_type)
+            
+            color = model_colors.get(model_name, '#95A5A6')
+            scatter = ax7.scatter(fprs, tprs, s=150, alpha=0.6, color=color, 
+                                 label=model_name, edgecolors='black', linewidth=1.5)
+            # Add labels
+            for i, label in enumerate(labels):
+                ax7.annotate(label, (fprs[i], tprs[i]), fontsize=8, 
+                           xytext=(5, 5), textcoords='offset points')
+        
+        ax7.set_xlabel('False Positive Rate (FPR)', fontsize=11, fontweight='bold')
+        ax7.set_ylabel('True Positive Rate (TPR)', fontsize=11, fontweight='bold')
+        ax7.set_title('TPR vs FPR Trade-off by Attack Type', fontsize=12, fontweight='bold')
+        ax7.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='Random')
+        ax7.set_xlim([-0.01, max(0.1, max([max([models_data[m][at].get('false_positive_rate',
+                                                                         models_data[m][at].get('fpr', 0)) 
+                                                 for at in all_attack_types if at in models_data[m]]) 
+                                            for m in models_data.keys()]) * 1.2)])
+        ax7.set_ylim([0.9, 1.05])
+        ax7.legend()
+        ax7.grid(alpha=0.3)
+        
+        # Plot 8: F1-Score by Attack Type
+        ax8 = fig.add_subplot(gs[2, 1])
+        offset = 0
+        
+        for model_name in sorted(models_data.keys()):
+            f1_scores = []
+            for attack_type in all_attack_types:
+                if attack_type in models_data[model_name]:
+                    f1 = models_data[model_name][attack_type].get('f1_score', 0)
+                else:
+                    f1 = 0
+                f1_scores.append(f1)
+            
+            color = model_colors.get(model_name, '#95A5A6')
+            ax8.bar(x + offset * width, f1_scores, width, label=model_name, color=color, alpha=0.8)
+            offset += 1
+        
+        ax8.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax8.set_ylabel('F1-Score', fontsize=11, fontweight='bold')
+        ax8.set_title('F1-Score by Attack Type', fontsize=12, fontweight='bold')
+        ax8.set_xticks(x + width * (len(models_data) - 1) / 2)
+        ax8.set_xticklabels(all_attack_types, rotation=45, ha='right')
+        ax8.set_ylim([0, 1.1])
+        ax8.legend()
+        ax8.grid(axis='y', alpha=0.3)
+        
+        # Plot 9: Sample Counts by Attack Type
+        ax9 = fig.add_subplot(gs[2, 2])
+        # Get sample counts from first model (they should be similar)
+        first_model = model_names_sorted[0]
+        sample_counts = []
+        for attack_type in all_attack_types:
+            if attack_type in models_data[first_model]:
+                count = models_data[first_model][attack_type].get('sample_count', 0)
+            else:
+                count = 0
+            sample_counts.append(count)
+        
+        bars = ax9.bar(all_attack_types, sample_counts, color='#95A5A6', alpha=0.7)
+        ax9.set_xlabel('Attack Type', fontsize=11, fontweight='bold')
+        ax9.set_ylabel('Number of Samples', fontsize=11, fontweight='bold')
+        ax9.set_title('Test Set Distribution by Attack Type', fontsize=12, fontweight='bold')
+        ax9.tick_params(axis='x', rotation=45)
+        ax9.grid(axis='y', alpha=0.3)
+        
+        # Add value labels on bars
+        for bar in bars:
+            height = bar.get_height()
+            ax9.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{int(height)}', ha='center', va='bottom', fontsize=9)
+        
+        fig.suptitle('Model Performance Comparison by Attack Type', 
+                    fontsize=16, fontweight='bold', y=0.995)
+        
+        try:
+            plt.tight_layout()
+        except:
+            # Some subplots may not be compatible with tight_layout
+            pass
+        
+        if save_name:
+            save_path = self.save_dir / save_name
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Attack type comparison visualization saved to {save_path}")
+        
+        plt.close()
+    
+    def _parse_attack_type_report(self, report_text: str) -> Dict[str, Dict[str, float]]:
+        """
+        Parse attack type report text into structured dictionary.
+        
+        Args:
+            report_text: Text content of attack type report
+            
+        Returns:
+            Dictionary mapping attack type to metrics
+        """
+        results = {}
+        lines = report_text.split('\n')
+        
+        # Find the table section
+        in_table = False
+        for line in lines:
+            line = line.strip()
+            if 'Attack Type' in line and 'Samples' in line:
+                in_table = True
+                continue
+            
+            if in_table and line.startswith('-'):
+                continue
+            
+            if in_table and line and not line.startswith('='):
+                # Parse table row
+                parts = line.split()
+                if len(parts) >= 8:
+                    try:
+                        # Attack type might be multiple words (e.g., "Voltage + CNN")
+                        # Find where numbers start
+                        attack_type_parts = []
+                        num_start_idx = 0
+                        for i, part in enumerate(parts):
+                            try:
+                                int(part)  # Try to convert to int
+                                num_start_idx = i
+                                break
+                            except ValueError:
+                                attack_type_parts.append(part)
+                        
+                        attack_type = ' '.join(attack_type_parts).lower()
+                        if not attack_type:
+                            continue
+                        
+                        # Parse numbers starting from num_start_idx
+                        samples = int(parts[num_start_idx])
+                        attacks = int(parts[num_start_idx + 1])
+                        accuracy = float(parts[num_start_idx + 2])
+                        tpr = float(parts[num_start_idx + 3])
+                        fpr = float(parts[num_start_idx + 4])
+                        precision = float(parts[num_start_idx + 5])
+                        recall = float(parts[num_start_idx + 6])
+                        f1_score = float(parts[num_start_idx + 7]) if len(parts) > num_start_idx + 7 else 0.0
+                        
+                        results[attack_type] = {
+                            'sample_count': samples,
+                            'attack_count': attacks,
+                            'accuracy': accuracy,
+                            'true_positive_rate': tpr,
+                            'tpr': tpr,
+                            'false_positive_rate': fpr,
+                            'fpr': fpr,
+                            'precision': precision,
+                            'recall': recall,
+                            'f1_score': f1_score
+                        }
+                    except (ValueError, IndexError):
+                        continue
+            
+            if in_table and line.startswith('='):
+                break
+        
+        return results
+    
+    def plot_model_attack_type_performance(self, attack_type_results: Dict[str, Dict[str, float]],
+                                          model_name: str,
+                                          save_name: Optional[str] = None):
+        """
+        Create visualization showing a single model's performance across attack types.
+        
+        Args:
+            attack_type_results: Results from evaluate_by_attack_type
+            model_name: Name of the model
+            save_name: Optional filename to save visualization
+        """
+        # Filter out 'normal' attack type for visualization
+        attack_types = sorted([at for at in attack_type_results.keys() if at.lower() != 'normal'])
+        
+        if not attack_types:
+            logger.warning("No attack types found for visualization")
+            return
+        
+        # Create figure with subplots
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        fig.suptitle(f'{model_name} - Performance by Attack Type', 
+                    fontsize=16, fontweight='bold')
+        
+        # Extract data
+        tprs = [attack_type_results[at].get('true_positive_rate', 
+                                            attack_type_results[at].get('tpr', 0)) 
+                for at in attack_types]
+        fprs = [attack_type_results[at].get('false_positive_rate',
+                                             attack_type_results[at].get('fpr', 0)) 
+                for at in attack_types]
+        accuracies = [attack_type_results[at].get('accuracy', 0) for at in attack_types]
+        f1_scores = [attack_type_results[at].get('f1_score', 0) for at in attack_types]
+        sample_counts = [attack_type_results[at].get('sample_count', 0) for at in attack_types]
+        
+        # Plot 1: TPR by Attack Type
+        ax1 = axes[0, 0]
+        bars1 = ax1.bar(attack_types, tprs, color='#4ECDC4', alpha=0.8, edgecolor='black')
+        ax1.set_ylabel('True Positive Rate (TPR)', fontsize=11, fontweight='bold')
+        ax1.set_title('Attack Detection Rate', fontsize=12, fontweight='bold')
+        ax1.set_ylim([0, 1.1])
+        ax1.tick_params(axis='x', rotation=45)
+        ax1.grid(axis='y', alpha=0.3)
+        for bar, tpr in zip(bars1, tprs):
+            height = bar.get_height()
+            ax1.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{tpr:.3f}', ha='center', va='bottom', fontsize=9)
+        
+        # Plot 2: FPR by Attack Type
+        ax2 = axes[0, 1]
+        bars2 = ax2.bar(attack_types, fprs, color='#FF6B6B', alpha=0.8, edgecolor='black')
+        ax2.set_ylabel('False Positive Rate (FPR)', fontsize=11, fontweight='bold')
+        ax2.set_title('False Alarm Rate', fontsize=12, fontweight='bold')
+        max_fpr = max(fprs) if fprs else 0.1
+        ax2.set_ylim([0, max(0.1, max_fpr * 1.2)])
+        ax2.tick_params(axis='x', rotation=45)
+        ax2.grid(axis='y', alpha=0.3)
+        for bar, fpr in zip(bars2, fprs):
+            height = bar.get_height()
+            ax2.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{fpr:.4f}', ha='center', va='bottom', fontsize=9)
+        
+        # Plot 3: Accuracy and F1-Score
+        ax3 = axes[1, 0]
+        x = np.arange(len(attack_types))
+        width = 0.35
+        bars3a = ax3.bar(x - width/2, accuracies, width, label='Accuracy', 
+                        color='#45B7D1', alpha=0.8, edgecolor='black')
+        bars3b = ax3.bar(x + width/2, f1_scores, width, label='F1-Score', 
+                        color='#FFA07A', alpha=0.8, edgecolor='black')
+        ax3.set_ylabel('Score', fontsize=11, fontweight='bold')
+        ax3.set_title('Accuracy and F1-Score', fontsize=12, fontweight='bold')
+        ax3.set_xticks(x)
+        ax3.set_xticklabels(attack_types, rotation=45, ha='right')
+        ax3.set_ylim([0, 1.1])
+        ax3.legend()
+        ax3.grid(axis='y', alpha=0.3)
+        
+        # Plot 4: Sample Distribution
+        ax4 = axes[1, 1]
+        bars4 = ax4.bar(attack_types, sample_counts, color='#95A5A6', alpha=0.7, edgecolor='black')
+        ax4.set_ylabel('Number of Samples', fontsize=11, fontweight='bold')
+        ax4.set_title('Test Set Distribution', fontsize=12, fontweight='bold')
+        ax4.tick_params(axis='x', rotation=45)
+        ax4.grid(axis='y', alpha=0.3)
+        for bar, count in zip(bars4, sample_counts):
+            height = bar.get_height()
+            ax4.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{int(count)}', ha='center', va='bottom', fontsize=9)
+        
+        plt.tight_layout()
+        
+        if save_name:
+            save_path = self.save_dir / save_name
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Model attack type performance visualization saved to {save_path}")
+        
+        plt.close()
 
 
 def main():

@@ -87,11 +87,15 @@ class TimingBasedIDS(BaselineIDS):
         predictions = []
         scores = []
         
+        # Track recent intervals for each CAN ID to detect anomalies
+        recent_intervals: Dict[int, deque] = defaultdict(lambda: deque(maxlen=10))
+        
         for i in range(1, len(timestamps)):
             can_id = can_ids[i]
             prev_can_id = can_ids[i-1]
             
-            if can_id == prev_can_id and can_id in self.expected_intervals:
+            # Check if this CAN ID has expected intervals
+            if can_id in self.expected_intervals:
                 interval = timestamps[i] - timestamps[i-1]
                 expected_mean, expected_std = self.expected_intervals[can_id]
                 
@@ -99,22 +103,40 @@ class TimingBasedIDS(BaselineIDS):
                 if expected_std > 0:
                     deviation = abs(interval - expected_mean) / expected_std
                 else:
-                    deviation = abs(interval - expected_mean)
+                    deviation = abs(interval - expected_mean) if expected_mean > 0 else 0.0
                 
-                # Normalize deviation to 0-1 range
-                anomaly_score = min(1.0, deviation / 3.0)  # 3-sigma rule
+                # Store recent interval for this CAN ID
+                recent_intervals[can_id].append(interval)
                 
                 # Check clock skew if available
-                if can_id in self.clock_skew:
-                    expected_with_skew = expected_mean + self.clock_skew[can_id] * i
+                if can_id in self.clock_skew and len(recent_intervals[can_id]) > 5:
+                    # Calculate expected interval with skew
+                    expected_with_skew = expected_mean + self.clock_skew[can_id] * len(recent_intervals[can_id])
                     skew_deviation = abs(interval - expected_with_skew) / (expected_std + 1e-6)
-                    anomaly_score = max(anomaly_score, min(1.0, skew_deviation / 3.0))
+                    deviation = max(deviation, skew_deviation)
                 
-                is_anomaly = anomaly_score > self.threshold
+                # Normalize deviation to 0-1 range (use 2-sigma for more sensitive detection)
+                anomaly_score = min(1.0, deviation / 2.0)  # 2-sigma rule (more sensitive)
+                
+                # Also check for sudden changes in interval pattern
+                if len(recent_intervals[can_id]) >= 5:
+                    recent_mean = np.mean(list(recent_intervals[can_id]))
+                    recent_std = np.std(list(recent_intervals[can_id]))
+                    if recent_std > 0:
+                        pattern_deviation = abs(recent_mean - expected_mean) / (expected_std + 1e-6)
+                        anomaly_score = max(anomaly_score, min(1.0, pattern_deviation / 2.0))
+                
+                # Lower threshold for better attack detection
+                is_anomaly = anomaly_score > (self.threshold * 0.5)  # More sensitive
             else:
-                # Unknown CAN ID or first message
-                anomaly_score = 0.5
-                is_anomaly = False
+                # Unknown CAN ID - could be suspicious
+                if can_id not in self.expected_intervals and len(self.expected_intervals) > 0:
+                    # New/unseen CAN ID might be an attack
+                    anomaly_score = 0.6
+                    is_anomaly = True
+                else:
+                    anomaly_score = 0.0
+                    is_anomaly = False
             
             predictions.append(int(is_anomaly))
             scores.append(anomaly_score)
@@ -129,10 +151,10 @@ class TimingBasedIDS(BaselineIDS):
 class FrequencyBasedIDS(BaselineIDS):
     """IDS that looks for weird message frequencies. DoS attacks spike the rate"""
     
-    def __init__(self, window_size: int = 100, threshold: float = 2.0):
+    def __init__(self, window_size: int = 100, threshold: float = 3.0):
         super().__init__(name="Frequency-Based")
         self.window_size = window_size
-        self.threshold = threshold
+        self.threshold = threshold  # Increased from 2.0 to 3.0 to reduce false positives
         self.expected_frequencies: Dict[int, Tuple[float, float]] = {}
     
     def train(self, timestamps: np.ndarray, can_ids: np.ndarray, y: np.ndarray):
@@ -202,16 +224,31 @@ class FrequencyBasedIDS(BaselineIDS):
                         
                         expected_mean, expected_std = self.expected_frequencies[can_id]
                         
-                        # Calculate deviation
+                        # Calculate deviation (use relative deviation for better sensitivity)
                         if expected_std > 0:
+                            # Z-score based deviation
                             deviation = abs(current_freq - expected_mean) / expected_std
                         else:
-                            deviation = abs(current_freq - expected_mean)
+                            # If no variance, use relative difference
+                            if expected_mean > 0:
+                                deviation = abs(current_freq - expected_mean) / expected_mean
+                            else:
+                                deviation = abs(current_freq) if current_freq > 0 else 0.0
                         
+                        # Normalize to 0-1 range
                         anomaly_score = min(1.0, deviation / self.threshold)
+                        
+                        # Use stricter threshold: need significant deviation
+                        # Also check for both too high (DoS) and too low (blocking) frequencies
                         is_anomaly = deviation > self.threshold
+                        
+                        # Additional check: sudden spike (DoS attack)
+                        if current_freq > expected_mean * 2.0:
+                            is_anomaly = True
+                            anomaly_score = min(1.0, (current_freq / expected_mean) / 5.0)
                     else:
-                        anomaly_score = 0.5
+                        # Unknown CAN ID - moderate suspicion
+                        anomaly_score = 0.3
                         is_anomaly = False
                 else:
                     anomaly_score = 0.0

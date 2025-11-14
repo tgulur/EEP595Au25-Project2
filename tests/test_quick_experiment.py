@@ -40,7 +40,7 @@ def main():
     
     # Generate small CAN dataset (1000 samples)
     can_df = loader._create_sample_can_data(n_samples=1000)
-    X_can, y_can = loader.preprocess_can_data(can_df, sequence_length=50)
+    X_can, y_can, attack_types_can = loader.preprocess_can_data(can_df, sequence_length=50)
     
     logger.info(f"Voltage data: {X_voltage.shape}, Labels: Normal={np.sum(y_voltage==0)}, Attack={np.sum(y_voltage==1)}")
     logger.info(f"CAN data: {X_can.shape}, Labels: Normal={np.sum(y_can==0)}, Attack={np.sum(y_can==1)}")
