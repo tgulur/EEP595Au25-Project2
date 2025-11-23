@@ -1,213 +1,153 @@
-# Deep Learning and Voltage Fingerprinting for CAN Intrusion Detection
+# CAN Intrusion Detection System with Voltage Fingerprinting and Deep Learning
 
 ## Project Overview
 
-This project implements an advanced intrusion detection system (IDS) for automotive Controller Area Network (CAN) bus by combining:
-- **Voltage Fingerprinting**: Physical-layer ECU identification using voltage signatures
-- **Deep Learning**: CNN and LSTM models for attack pattern recognition
-- **Decision-Level Fusion**: Adaptive fusion layer combining both approaches
+This project implements a comprehensive intrusion detection system (IDS) for automotive Controller Area Network (CAN) bus by combining multiple detection approaches:
 
-**Team Members**: Tejas Gulur, Keerthi Pobba, Bryan Gonzalez
+- **Voltage Fingerprinting**: Physical-layer ECU identification using voltage signatures
+- **Deep Learning Models**: CNN and LSTM architectures for attack pattern recognition
+- **Decision-Level Fusion**: Adaptive fusion layer combining multiple detection methods
+- **Baseline Models**: Traditional timing and frequency-based detection methods
+
+**Team Members**: Tejas Gulur, Keerthi Pobba, Bryan Gonzalez  
+**Course**: EEP595 Autumn 2025, University of Washington
 
 ---
 
 ## Features
 
 ### Core Components
-1. **Voltage Fingerprinting Module** (`src/voltage_fingerprinting.py`)
-   - ECU identification from voltage signatures
-   - Statistical and frequency domain feature extraction
-   - Anomaly detection based on voltage deviations
+1. **Voltage Fingerprinting Module** - ECU identification from voltage signatures with anomaly detection
+2. **Deep Learning Models** - CNN, LSTM, and Hybrid CNN-LSTM architectures optimized for CAN message sequences
+3. **Fusion Layer** - Multiple fusion strategies (weighted average, stacking, adaptive weighting)
+4. **Baseline Models** - Timing-based IDS, Frequency-based IDS, and Rule-based IDS
+5. **Comprehensive Evaluation** - Detailed metrics, visualizations, and performance analysis
 
-2. **Deep Learning Models** (`src/deep_learning_models.py`)
-   - CNN for spatial pattern recognition
-   - LSTM for temporal sequence analysis
-   - Hybrid CNN-LSTM architecture
-
-3. **Fusion Layer** (`src/fusion_layer.py`)
-   - Weighted average fusion
-   - Stacking ensemble with XGBoost/Random Forest
-   - Adaptive online weight adjustment
-
-4. **Baseline Models** (`src/baseline_models.py`)
-   - Timing-based IDS (clock skew detection)
-   - Frequency-based IDS
-   - Rule-based IDS
-
-5. **Evaluation Framework** (`src/evaluation_metrics.py`)
-   - Comprehensive metrics (TPR, FPR, F1, AUC)
-   - Latency measurements
-   - Visualization tools
-
-### Attack Scenarios
-- **Spoofing**: Impersonating legitimate ECUs
-- **DoS**: Denial of Service attacks flooding the bus
-- **Fuzzing**: Random invalid messages
-- **Replay**: Replaying captured messages
-- **Masquerade**: Valid format with wrong ECU
+### Attack Detection
+- **Spoofing**: ECU impersonation attacks
+- **DoS**: Denial of Service flooding attacks
+- **Fuzzing**: Random invalid message injection
+- **Replay**: Captured message replay attacks
+- **Masquerade**: Valid format with incorrect ECU source
 
 ---
 
-## Installation
+## Quick Start
 
 ### Prerequisites
 - Python 3.8 or higher
-- Linux OS (for SocketCAN support)
+- Linux OS (recommended for CAN bus simulation)
+- GPU with CUDA support (optional, will fallback to CPU)
 - sudo privileges (for virtual CAN setup)
 
-### Setup
+### Installation
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd EEP595Au25-Project2
 
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
 # Install dependencies
 pip install -r requirements.txt
 
-# Setup virtual CAN interface (requires sudo)
+# Optional: Setup virtual CAN interface for real CAN simulation
 sudo bash scripts/setup_vcan.sh
 ```
+
+### Running the Complete Experiment
+
+The easiest way to run the full system is using the main experiment script:
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Run complete experiment (voltage fingerprinting + DL models + fusion + baselines)
+python main_experiment.py --config config/config.yaml
+
+# Or run in background with nohup (recommended for long experiments)
+nohup python main_experiment.py --config config/config.yaml > experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+```
+
+**Note**: The experiment will automatically:
+- Generate synthetic datasets if real data is not available
+- Train all models (voltage, CNN, LSTM, fusion, baselines)
+- Evaluate performance and generate comparisons
+- Save results to `results/YYYYMMDD_HHMMSS/` directory
+- Create visualizations and detailed reports
+
+### GPU Support
+
+The system automatically detects and uses GPU acceleration when available:
+- **GPU Mode**: Uses NVIDIA GPU with CUDA (much faster training)
+- **CPU Mode**: Falls back to CPU-only mode (works but slower)
+
+If you encounter GPU compatibility issues (common with TensorFlow 2.20+ and CUDA 13.0), the system will automatically use CPU mode.
 
 ---
 
 ## Dataset Information
 
-### Supported Datasets
+The system supports two types of datasets:
 
-1. **CANMAP Voltage Dataset**
-   - Source: [IEEE DataPort](https://ieee-dataport.org/documents/canmap-voltage-dataset-mapping-can-bus)
-   - Contains voltage traces from CAN bus for ECU fingerprinting
-   - Place in: `data/raw/canmap_voltage/`
+### 1. CANMAP Voltage Dataset
+- **Source**: IEEE DataPort
+- **Purpose**: Voltage-based ECU fingerprinting
+- **Location**: `data/raw/canmap_voltage/`
+- **Features**: Physical layer voltage traces for ECU identification
 
-2. **ROAD CAN IDS Dataset**
-   - Source: [SciDB](https://www.scidb.cn/en/detail?dataSetId=80083f761e5c4008a34a4e29a9f8fe42)
-   - Contains labeled CAN messages with various attack types
-   - Place in: `data/raw/road_can_ids/`
+### 2. ROAD CAN IDS Dataset
+- **Source**: SciDB
+- **Purpose**: CAN message-based intrusion detection
+- **Location**: `data/raw/road_can_ids/`
+- **Features**: Labeled CAN messages with various attack types
 
-### Dataset Structure
-```
-data/
-├── raw/
-│   ├── canmap_voltage/     # Voltage traces
-│   └── road_can_ids/       # CAN message logs
-└── processed/              # Preprocessed data
-```
+### Data Generation
+If datasets are not available, the system automatically generates realistic synthetic data for testing and development.
 
 ---
 
-## Usage
+## Manual Usage (Advanced)
 
-### 1. Virtual CAN Setup and Traffic Generation
+For custom usage or development, you can use individual components:
 
-```bash
-# Setup virtual CAN (run once)
-sudo bash scripts/setup_vcan.sh
-
-# Generate normal traffic
-python scripts/generate_can_traffic.py --duration 60 --attack normal
-
-# Generate traffic with attacks
-python scripts/generate_can_traffic.py --duration 60 --attack spoofing --attack-rate 0.1
-python scripts/generate_can_traffic.py --duration 60 --attack dos --attack-rate 0.2
-python scripts/generate_can_traffic.py --duration 60 --attack fuzzing --attack-rate 0.15
-```
-
-### 2. Data Loading and Preprocessing
-
+### Data Loading
 ```python
 from src.dataset_loader import CANDatasetLoader
 
-# Initialize loader
 loader = CANDatasetLoader("data/raw")
-
-# Load datasets
-voltage_df = loader.load_canmap_voltage_dataset()
-can_df = loader.load_road_dataset()
-
-# Preprocess
-X_voltage, y_voltage = loader.preprocess_voltage_data(voltage_df)
-X_can, y_can = loader.preprocess_can_data(can_df, sequence_length=100)
-
-# Split data
-voltage_splits = loader.split_data(X_voltage, y_voltage)
-can_splits = loader.split_data(X_can, y_can)
+voltage_data = loader.load_canmap_voltage_dataset()
+can_data = loader.load_road_dataset()
 ```
 
-### 3. Training Models
-
-#### Voltage Fingerprinting
+### Model Training
 ```python
+# Voltage Fingerprinting
 from src.voltage_fingerprinting import VoltageFingerprinter
+vf = VoltageFingerprinter()
+vf.train(voltage_signals, ecu_labels)
 
-fingerprinter = VoltageFingerprinter(threshold=0.7)
-fingerprinter.train(voltage_signals, ecu_ids)
-
-# Predict
-predicted_ecu, confidence = fingerprinter.predict(test_signal)
-is_anomaly, conf = fingerprinter.detect_anomaly(test_signal, claimed_ecu_id)
-```
-
-#### Deep Learning Models
-```python
+# Deep Learning Models
 from src.deep_learning_models import CNNModel, LSTMModel
+cnn = CNNModel()
+cnn.train(X_train, y_train)
 
-# CNN
-cnn = CNNModel(filters=[64, 128, 256], dropout=0.3)
-cnn.build_model(input_shape=(100, 10))
-cnn.train(X_train, y_train, X_val, y_val, epochs=50, batch_size=32)
-
-# LSTM
-lstm = LSTMModel(hidden_units=[128, 64], bidirectional=True)
-lstm.build_model(input_shape=(100, 10))
-lstm.train(X_train, y_train, X_val, y_val, epochs=50)
-```
-
-#### Fusion Layer
-```python
+# Fusion Layer
 from src.fusion_layer import FusionLayer
-
-# Train fusion
-fusion = FusionLayer(method='stacking', combiner_model='xgboost')
-fusion.train(voltage_scores, dl_scores, voltage_confs, dl_confs, labels)
-
-# Predict
-prediction, confidence = fusion.predict(v_score, dl_score, v_conf, dl_conf)
+fusion = FusionLayer(method='stacking')
+fusion.train(voltage_scores, dl_scores, labels)
 ```
 
-### 4. Evaluation
-
+### Evaluation
 ```python
 from src.evaluation_metrics import IDSEvaluator
-
 evaluator = IDSEvaluator(save_dir="results")
-
-# Calculate metrics
-metrics = evaluator.calculate_metrics(y_true, y_pred, y_score)
-
-# Generate visualizations
-evaluator.plot_confusion_matrix(y_true, y_pred, save_name="confusion_matrix.png")
-evaluator.plot_roc_curve(y_true, y_score, save_name="roc_curve.png")
-
-# Generate report
-report = evaluator.generate_report("Model Name", metrics, save_name="report.txt")
-print(report)
-```
-
-### 5. Baseline Comparison
-
-```python
-from src.baseline_models import TimingBasedIDS, FrequencyBasedIDS
-
-# Timing-based
-timing_ids = TimingBasedIDS(threshold=0.05)
-timing_ids.train(timestamps, can_ids, labels)
-predictions, scores = timing_ids.predict(test_timestamps, test_can_ids)
-
-# Frequency-based
-freq_ids = FrequencyBasedIDS(window_size=100)
-freq_ids.train(timestamps, can_ids, labels)
-predictions, scores = freq_ids.predict(test_timestamps, test_can_ids)
+metrics = evaluator.calculate_metrics(y_true, y_pred, y_scores)
+evaluator.generate_report("Model Name", metrics)
 ```
 
 ---
@@ -216,76 +156,167 @@ predictions, scores = freq_ids.predict(test_timestamps, test_can_ids)
 
 ```
 EEP595Au25-Project2/
+├── main_experiment.py          # Main experiment runner
 ├── config/
-│   └── config.yaml              # Configuration parameters
+│   └── config.yaml            # Configuration parameters
 ├── data/
-│   ├── raw/                     # Raw datasets
-│   └── processed/               # Preprocessed data
-├── models/                      # Saved models
-├── notebooks/                   # Jupyter notebooks
-├── results/                     # Evaluation results
+│   ├── raw/                   # Raw datasets (optional)
+│   └── processed/             # Preprocessed/generated data
+├── docs/                      # Documentation
+├── logs/                      # Experiment logs
+├── models/                    # Saved trained models
+├── notebooks/                 # Jupyter notebooks for analysis
+├── results/                   # Experiment results and reports
+│   └── YYYYMMDD_HHMMSS/      # Timestamped result directories
 ├── scripts/
-│   ├── setup_vcan.sh           # Virtual CAN setup
-│   └── generate_can_traffic.py # Traffic generation
-├── src/
-│   ├── dataset_loader.py       # Dataset loading
-│   ├── voltage_fingerprinting.py  # Voltage-based IDS
-│   ├── deep_learning_models.py # DL models
-│   ├── fusion_layer.py         # Decision fusion
-│   ├── baseline_models.py      # Baseline methods
-│   └── evaluation_metrics.py   # Evaluation tools
-├── tests/                       # Unit tests
-├── .gitignore
-├── requirements.txt
-├── README.md
-├── proposal.txt                 # Project proposal
-└── feedback.txt                 # Feedback notes
+│   ├── setup_vcan.sh         # Virtual CAN setup
+│   ├── generate_can_traffic.py # CAN traffic generation
+│   ├── run_experiment_nohup.sh # Background experiment runner
+│   └── show_results.sh       # Results visualization
+├── src/                       # Source code
+│   ├── dataset_loader.py      # Data loading and preprocessing
+│   ├── voltage_fingerprinting.py # Voltage-based detection
+│   ├── deep_learning_models.py # CNN/LSTM models
+│   ├── fusion_layer.py        # Decision fusion
+│   ├── baseline_models.py     # Traditional methods
+│   └── evaluation_metrics.py  # Evaluation framework
+├── tests/                     # Unit tests
+├── requirements.txt           # Python dependencies
+├── pytest.ini                # Test configuration
+└── README.md                 # This file
 ```
 
 ---
 
-## Evaluation Metrics
+## Results and Output
 
-The system is evaluated using:
+Experiments save results to timestamped directories in `results/`:
 
-### Classification Metrics
+```
+results/20251115_143000/
+├── voltage_report.txt         # Voltage fingerprinting results
+├── cnn_report.txt            # CNN model results
+├── lstm_report.txt           # LSTM model results
+├── fusion_report.txt         # Fusion model results
+├── timing_report.txt         # Baseline timing results
+├── frequency_report.txt      # Baseline frequency results
+├── comparison_table.txt      # Model comparison
+├── voltage_confusion_matrix.png
+├── voltage_roc_curve.png
+├── cnn_confusion_matrix.png
+└── ... (additional plots)
+```
+
+### Key Metrics
 - **Accuracy**: Overall correctness
-- **Precision**: Attack prediction accuracy
-- **Recall (TPR)**: Attack detection rate
-- **F1-Score**: Harmonic mean of precision and recall
+- **TPR (Recall)**: Attack detection rate
 - **FPR**: False positive rate
-- **AUC-ROC**: Area under ROC curve
-
-### Performance Metrics
-- **Latency**: Mean, median, P95, P99
-- **Throughput**: Messages processed per second
-
-### Cross-Vehicle Generalization
-- Train on one vehicle, test on others
-- Measure transfer learning effectiveness
-
----
-
-## Experimental Results
-
-Results will be saved in `results/` directory including:
-- Confusion matrices
-- ROC curves
-- Precision-Recall curves
-- Model comparison charts
-- Latency comparisons
-- Detailed text reports
+- **F1-Score**: Balanced accuracy metric
+- **AUC-ROC**: Discrimination ability
+- **Latency**: Processing time per message
 
 ---
 
 ## Configuration
 
-Edit `config/config.yaml` to adjust:
-- Model hyperparameters
-- Training parameters
-- Dataset paths
-- Evaluation settings
-- Attack scenarios
+Modify `config/config.yaml` to adjust:
+- Model architectures and hyperparameters
+- Training parameters (epochs, batch size, learning rate)
+- Dataset paths and preprocessing settings
+- Fusion methods and weights
+- Evaluation metrics and thresholds
+
+---
+
+## Scripts and Tools
+
+### Experiment Management
+```bash
+# Run experiment in background
+./scripts/run_experiment_nohup.sh
+
+# View results
+./scripts/show_results.sh
+
+# Run tests
+./scripts/run_tests.sh
+```
+
+### CAN Traffic Simulation
+```bash
+# Setup virtual CAN
+sudo ./scripts/setup_vcan.sh
+
+# Generate normal traffic
+python scripts/generate_can_traffic.py --duration 60 --attack normal
+
+# Generate attack traffic
+python scripts/generate_can_traffic.py --duration 60 --attack spoofing --attack-rate 0.1
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**GPU Not Available**
+- System falls back to CPU automatically
+- Check GPU compatibility with TensorFlow version
+- For GPU issues, contact system administrator
+
+**Missing Datasets**
+- System generates synthetic data automatically
+- Place real datasets in `data/raw/` for better results
+
+**Memory Issues**
+- Reduce batch size in `config/config.yaml`
+- Use CPU mode for large models
+
+**Virtual CAN Setup**
+- Requires sudo privileges
+- Only needed for real CAN bus simulation
+
+---
+
+## References
+
+1. Zhang, G. and Li, Y. (2024). "Voltage inspector: Sender identification for in-vehicle CAN bus using voltage slice." *Computers & Security*, 145, 104017.
+
+2. Zhang, M., et al. (2025). "A Lightweight Voltage-Based ECU Fingerprint Intrusion Detection System for In-Vehicle CAN Bus." *IEEE Transactions on Vehicular Technology*.
+
+3. Xu, Z., et al. (2025). "Deep learning-based Intrusion Detection Systems: A survey." arXiv preprint.
+
+4. Saravanan, R., et al. (2025). "Optimal attention deep learning based in-vehicle intrusion detection and classification model on CAN messages." *Scientific Reports*.
+
+5. McEntarffer, A., et al. (2025). "Towards a Comprehensive Evaluation of Voltage-Based Fingerprinting for the CAN Bus." *Proceedings of the 40th ACM/SIGAPP Symposium on Applied Computing*.
+
+### Datasets
+- CANMAP Voltage Dataset: https://ieee-dataport.org/documents/canmap-voltage-dataset-mapping-can-bus
+- ROAD CAN IDS Dataset: https://www.scidb.cn/en/detail?dataSetId=80083f761e5c4008a34a4e29a9f8fe42
+
+### Manual Usage (Advanced)
+
+For development or custom analysis, individual components can be used:
+
+```python
+# Example: Load and preprocess data
+from src.dataset_loader import CANDatasetLoader
+loader = CANDatasetLoader("data/raw")
+X_can, y_can = loader.preprocess_can_data(loader.load_road_dataset())
+
+# Example: Train individual model
+from src.deep_learning_models import CNNModel
+cnn = CNNModel()
+cnn.train(X_train, y_train)
+
+# Example: Evaluate results
+from src.evaluation_metrics import IDSEvaluator
+evaluator = IDSEvaluator(save_dir="results")
+metrics = evaluator.calculate_metrics(y_true, y_pred, y_scores)
+```
+
+See source code documentation for detailed API usage.
 
 ---
 
@@ -313,16 +344,14 @@ This is an academic project for EEP595 Autumn 2025.
 
 ---
 
-## License
-
-Academic use only.
-
----
-
 ## Contact
 
 - Tejas Gulur
 - Keerthi Pobba
 - Bryan Gonzalez
 
-University of Washington, EEP595 Autumn 2025
+University of Washington, EEP595 Autumn 2025. 
+
+## NOTICE
+
+This README was written by hand and then formatted nicely to README using AI
