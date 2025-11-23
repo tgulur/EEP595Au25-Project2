@@ -70,7 +70,7 @@ source .venv/bin/activate
 python main_experiment.py --config config/config.yaml
 
 # Or run in background with nohup (recommended for long experiments)
-nohup python main_experiment.py --config config/config.yaml > experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+nohup python main_experiment.py --config config/config.yaml > logs/experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
 ```
 
 **Note**: The experiment will automatically:

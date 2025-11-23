@@ -117,6 +117,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Saved to {save_path}")
         
@@ -145,6 +146,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Saved to {save_path}")
         
@@ -171,6 +173,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Saved to {save_path}")
         
@@ -210,6 +213,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Saved to {save_path}")
         
@@ -245,6 +249,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Latency comparison plot saved to {save_path}")
         
@@ -337,6 +342,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Attack detection timeline saved to {save_path}")
         
@@ -402,6 +408,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Detection heatmap saved to {save_path}")
         
@@ -580,6 +587,7 @@ class IDSEvaluator:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             logger.info(f"Comprehensive comparison saved to {save_path}")
         
@@ -645,6 +653,7 @@ Additional Metrics:
         
         if save_name:
             save_path = self.save_dir / save_name
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             with open(save_path, 'w') as f:
                 f.write(report)
             logger.info(f"Report saved to {save_path}")
