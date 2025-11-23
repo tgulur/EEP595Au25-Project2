@@ -11,6 +11,20 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
+# Set CUDA library paths for TensorFlow GPU support
+venv_path = Path(__file__).parent / ".venv"
+nvidia_lib_paths = [
+    venv_path / "lib64/python3.12/site-packages/nvidia/cublas/lib",
+    venv_path / "lib64/python3.12/site-packages/nvidia/cudnn/lib",
+    venv_path / "lib64/python3.12/site-packages/nvidia/cuda_runtime/lib",
+    venv_path / "lib64/python3.12/site-packages/nvidia/cuda_cupti/lib",
+    venv_path / "lib64/python3.12/site-packages/nvidia/cuda_nvrtc/lib",
+]
+current_ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+nvidia_paths_str = ':'.join(str(p) for p in nvidia_lib_paths if p.exists())
+if nvidia_paths_str:
+    os.environ['LD_LIBRARY_PATH'] = f"{nvidia_paths_str}:{current_ld_path}" if current_ld_path else nvidia_paths_str
+
 # Add src to path
 sys.path.append(str(Path(__file__).parent / "src"))
 
