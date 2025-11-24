@@ -80,7 +80,8 @@ class TestDatasetLoader:
         assert 'val' in splits
         assert 'test' in splits
         
-        total_samples = sum(len(splits[k][0]) for k in splits.keys())
+        # Only count the data tuples, not the index arrays
+        total_samples = len(splits['train'][0]) + len(splits['val'][0]) + len(splits['test'][0])
         assert total_samples == 100
 
 

@@ -210,7 +210,10 @@ class CANDatasetLoader:
             })
         
         df = pd.DataFrame(data)
-        logger.info(f"Generated voltage data: Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        if len(df) > 0:
+            logger.info(f"Generated voltage data: Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        else:
+            logger.info("Generated voltage data: Empty dataset")
         return df
     
     def _generate_can_voltage_waveform(self, time_vector: np.ndarray, 
@@ -269,6 +272,10 @@ class CANDatasetLoader:
         """Create sample CAN message data for testing"""
         logger.info(f"Creating {n_samples} sample CAN records")
         
+        # Handle edge cases
+        if n_samples <= 0:
+            return pd.DataFrame(columns=['timestamp', 'can_id', 'dlc', 'data', 'label', 'attack_type'])
+        
         data = []
         can_ids = [0x100, 0x200, 0x300, 0x400, 0x500, 0x600, 0x700]
         attack_types = ['normal', 'dos', 'fuzzing', 'spoofing', 'replay']
@@ -300,8 +307,11 @@ class CANDatasetLoader:
             })
         
         df = pd.DataFrame(data)
-        logger.info(f"Generated CAN data: {len(df)} messages, "
-                   f"Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        if len(df) > 0:
+            logger.info(f"Generated CAN data: {len(df)} messages, "
+                       f"Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        else:
+            logger.info("Generated CAN data: Empty dataset")
         return df
     
     def preprocess_voltage_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:

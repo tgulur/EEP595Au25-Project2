@@ -71,3 +71,6 @@ Thumbs.db
 # Experiment tracking
 mlruns/
 wandb/
+
+# Ignore NFS temporary files
+.nfs*
