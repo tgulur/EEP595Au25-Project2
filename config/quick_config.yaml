@@ -1,0 +1,110 @@
+# Quick config for CI smoke tests
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2
+  random_seed: 123
+
+deep_learning:
+  cnn:
+    filters: [8]
+    kernel_size: 3
+    dropout: 0.1
+  lstm:
+    hidden_units: [8]
+    dropout: 0.1
+    bidirectional: false
+  batch_size: 2
+  epochs: 1
+  learning_rate: 0.01
+  sequence_length: 10
+  patience: 1
+
+evaluation:
+  measure_latency: false
+  latency_iterations: 1
+
+output:
+  results_path: "results"
+# Quick smoke config for fast local testing
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  canmap_path: "data/raw/canmap_voltage"
+  road_path: "data/raw/road_can_ids"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_seed: 42
+
+voltage:
+  window_size: 50
+  overlap: 25
+  features: [mean, std, min, max]
+  num_ecus: 5
+  anomaly_threshold: 0.5
+
+deep_learning:
+  cnn:
+    filters: [16, 32]
+    kernel_size: 3
+    pooling: "max"
+    dropout: 0.2
+  lstm:
+    hidden_units: [32]
+    dropout: 0.1
+    bidirectional: false
+  batch_size: 8
+  epochs: 1
+  learning_rate: 0.001
+  optimizer: "adam"
+  sequence_length: 50
+  patience: 2
+  min_delta: 0.001
+
+fusion:
+  method: "weighted_average"
+  combiner:
+    model: "random_forest"
+  adaptive:
+    window_size: 10
+    update_frequency: 5
+
+baselines:
+  timing_based:
+    enabled: false
+  frequency_based:
+    enabled: false
+
+evaluation:
+  metrics: [accuracy, precision, recall, f1_score]
+  measure_latency: false
+  latency_iterations: 5
+
+attacks:
+  types: [spoofing]
+  synthetic:
+    enabled: true
+    injection_rate: 0.05
+
+cross_vehicle:
+  enabled: false
+
+vcan:
+  interface: "vcan0"
+  bitrate: 500000
+
+output:
+  models_path: "models"
+  results_path: "results"
+  logs_path: "logs"
+  save_plots: false
+  plot_format: "png"
+  save_checkpoints: false
+  checkpoint_frequency: 1
+
+logging:
+  level: "INFO"
+  file: "logs/quick_experiment.log"

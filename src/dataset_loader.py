@@ -5,23 +5,22 @@ Load and preprocess CAN datasets for the IDS system.
 import os
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional, Union
 import logging
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class CANDatasetLoader:
     """Handles loading and preprocessing of CAN bus datasets"""
     
-    def __init__(self, data_path: str):
-        self.data_path = Path(data_path)
+    def __init__(self, data_path: Union[str, Path]):
+        self.data_path: Path = Path(data_path)
         self.raw_data = None
         self.processed_data = None
         
-    def load_canmap_voltage_dataset(self, dataset_path: Optional[str] = None) -> pd.DataFrame:
+    def load_canmap_voltage_dataset(self, dataset_path: Optional[Union[str, Path]] = None) -> pd.DataFrame:
         """
         Load voltage traces from CANMAP dataset.
         Expects CSV files with timestamp, can_id, voltage_samples, and label columns.
@@ -58,7 +57,7 @@ class CANDatasetLoader:
             logger.warning("No data files found, creating sample data")
             return self._create_sample_voltage_data()
     
-    def load_road_dataset(self, dataset_path: Optional[str] = None) -> pd.DataFrame:
+    def load_road_dataset(self, dataset_path: Optional[Union[str, Path]] = None) -> pd.DataFrame:
         """
         Load ROAD CAN IDS dataset with labeled attack messages.
         Expects CSV with timestamp, can_id, dlc, data, and label columns.

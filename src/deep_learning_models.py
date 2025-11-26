@@ -6,12 +6,10 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, models, callbacks
-from typing import Tuple, Dict, Optional, List
+from typing import Tuple, Dict, Optional, List, Any
 import logging
 import time
 import os
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configure TensorFlow for CPU optimization
@@ -36,15 +34,15 @@ class CANIDSModel:
     def __init__(self, model_name: str = "base"):
         self.model_name = model_name
         self.model: Optional[keras.Model] = None
-        self.history = None
-        self.training_time = 0.0
-        self.warmed_up = False
+        self.history: Optional[Any] = None
+        self.training_time: float = 0.0
+        self.warmed_up: bool = False
         
-    def build_model(self, input_shape: Tuple):
+    def build_model(self, input_shape: Tuple[int, ...]) -> keras.Model:
         """Build the model architecture"""
         raise NotImplementedError("Subclasses must implement build_model")
     
-    def warmup(self, input_shape: Tuple, n_warmup: int = 10):
+    def warmup(self, input_shape: Tuple[int, ...], n_warmup: int = 10) -> None:
         """
         Warm up the model with dummy predictions to optimize performance.
         This helps initialize internal TensorFlow optimizations.
@@ -74,7 +72,7 @@ class CANIDSModel:
               epochs: int = 50, batch_size: int = 32, 
               learning_rate: float = 0.001,
               early_stopping: bool = True,
-              patience: int = 10) -> Dict:
+              patience: int = 10) -> Dict[str, Any]:
         """Train the model. Pretty standard stuff."""
         if self.model is None:
             raise ValueError("Need to build the model first!")
@@ -133,7 +131,11 @@ class CANIDSModel:
         self.training_time = time.time() - start_time
         logger.info(f"Done training in {self.training_time:.2f}s")
         
-        return self.history.history
+        # Return training history if available
+        if self.history is None:
+            return {}
+
+        return getattr(self.history, 'history', {})
     
     def predict(self, X: np.ndarray, batch_size: int = 32) -> Tuple[np.ndarray, np.ndarray]:
         """Get predictions. Returns both binary predictions and probabilities."""
@@ -149,7 +151,7 @@ class CANIDSModel:
         
         return predictions, probabilities.flatten()
     
-    def predict_with_latency(self, X: np.ndarray, n_iterations: int = 100) -> Dict:
+    def predict_with_latency(self, X: np.ndarray, n_iterations: int = 100) -> Dict[str, float]:
         """
         Measure prediction latency
         
@@ -170,27 +172,30 @@ class CANIDSModel:
         
         # Measure latency
         latencies = []
+        if self.model is None:
+            raise ValueError("Model needs to be built before measuring latency")
         for _ in range(n_iterations):
             start = time.time()
             _ = self.model.predict(X[:1], verbose=0)
             latency = (time.time() - start) * 1000  # Convert to ms
             latencies.append(latency)
         
+        # Ensure we return native Python floats for typing consistency
         return {
-            'mean_latency_ms': np.mean(latencies),
-            'std_latency_ms': np.std(latencies),
-            'min_latency_ms': np.min(latencies),
-            'max_latency_ms': np.max(latencies),
-            'median_latency_ms': np.median(latencies)
+            'mean_latency_ms': float(np.mean(latencies)),
+            'std_latency_ms': float(np.std(latencies)),
+            'min_latency_ms': float(np.min(latencies)),
+            'max_latency_ms': float(np.max(latencies)),
+            'median_latency_ms': float(np.median(latencies))
         }
     
-    def save_model(self, path: str):
+    def save_model(self, path: str) -> None:
         """Save model to file"""
         if self.model is not None:
             self.model.save(path)
             logger.info(f"Model saved to {path}")
     
-    def load_model(self, path: str):
+    def load_model(self, path: str) -> None:
         """Load model from file"""
         self.model = keras.models.load_model(path)
         logger.info(f"Model loaded from {path}")
@@ -207,7 +212,7 @@ class CNNModel(CANIDSModel):
         self.kernel_size = kernel_size
         self.dropout = dropout
     
-    def build_model(self, input_shape: Tuple) -> keras.Model:
+    def build_model(self, input_shape: Tuple[int, ...]) -> keras.Model:
         """Build the CNN. Each conv block has conv -> batch norm -> pooling -> dropout"""
         logger.info(f"Building CNN with input shape {input_shape}")
         
@@ -239,7 +244,10 @@ class CNNModel(CANIDSModel):
         
         self.model = models.Model(inputs=input_layer, outputs=output, name='CNN_IDS')
         
-        logger.info(f"CNN built: {self.model.count_params():,} parameters")
+        if self.model is not None:
+            logger.info(f"CNN built: {self.model.count_params():,} parameters")
+        else:
+            logger.warning("CNN built but model is None")
         
         return self.model
 
@@ -255,7 +263,7 @@ class LSTMModel(CANIDSModel):
         self.dropout = dropout
         self.bidirectional = bidirectional
     
-    def build_model(self, input_shape: Tuple) -> keras.Model:
+    def build_model(self, input_shape: Tuple[int, ...]) -> keras.Model:
         """Build LSTM. Can go bidirectional for better context"""
         logger.info(f"Building LSTM with input shape {input_shape}")
         
@@ -289,7 +297,10 @@ class LSTMModel(CANIDSModel):
         
         self.model = models.Model(inputs=input_layer, outputs=output, name='LSTM_IDS')
         
-        logger.info(f"LSTM built: {self.model.count_params():,} parameters")
+        if self.model is not None:
+            logger.info(f"LSTM built: {self.model.count_params():,} parameters")
+        else:
+            logger.warning("LSTM built but model is None")
         
         return self.model
 
@@ -305,7 +316,7 @@ class HybridCNNLSTM(CANIDSModel):
         self.lstm_units = lstm_units
         self.dropout = dropout
     
-    def build_model(self, input_shape: Tuple) -> keras.Model:
+    def build_model(self, input_shape: Tuple[int, ...]) -> keras.Model:
         """Build hybrid. CNN extracts features, LSTM handles sequences"""
         logger.info(f"Building hybrid CNN-LSTM with input shape {input_shape}")
         
@@ -331,7 +342,10 @@ class HybridCNNLSTM(CANIDSModel):
         
         self.model = models.Model(inputs=input_layer, outputs=output, name='Hybrid_CNN_LSTM_IDS')
         
-        logger.info(f"Hybrid built: {self.model.count_params():,} parameters")
+        if self.model is not None:
+            logger.info(f"Hybrid built: {self.model.count_params():,} parameters")
+        else:
+            logger.warning("Hybrid built but model is None")
         
         return self.model
 
@@ -350,19 +364,28 @@ def main():
     logger.info("\n=== Testing CNN ===")
     cnn = CNNModel()
     cnn.build_model(input_shape=(100, 10))
-    cnn.model.summary()
+    if cnn.model is not None:
+        cnn.model.summary()
+    else:
+        logger.warning("CNN model is None; cannot show summary")
     
     # Test LSTM
     logger.info("\n=== Testing LSTM ===")
     lstm = LSTMModel()
     lstm.build_model(input_shape=(100, 10))
-    lstm.model.summary()
+    if lstm.model is not None:
+        lstm.model.summary()
+    else:
+        logger.warning("LSTM model is None; cannot show summary")
     
     # Test Hybrid
     logger.info("\n=== Testing Hybrid ===")
     hybrid = HybridCNNLSTM()
     hybrid.build_model(input_shape=(100, 10))
-    hybrid.model.summary()
+    if hybrid.model is not None:
+        hybrid.model.summary()
+    else:
+        logger.warning("Hybrid model is None; cannot show summary")
     
     logger.info("\nAll tests passed!")
 

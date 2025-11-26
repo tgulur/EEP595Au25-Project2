@@ -74,3 +74,6 @@ wandb/
 
 # Ignore NFS temporary files
 .nfs*
+
+#ignore GitHub Files
+.github/

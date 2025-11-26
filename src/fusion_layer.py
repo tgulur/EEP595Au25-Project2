@@ -14,8 +14,6 @@ try:
 except ImportError:
     XGBOOST_AVAILABLE = False
     logging.warning("XGBoost not available, using alternatives")
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
