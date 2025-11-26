@@ -1,3 +1,9 @@
+"""`src` package init for canids project.
+
+This file keeps the code importable as `src.<module>`. Do not add heavy logic here.
+"""
+
+__all__ = []
 """
 CAN Bus Intrusion Detection System
 

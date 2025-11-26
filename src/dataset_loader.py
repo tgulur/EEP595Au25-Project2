@@ -5,23 +5,22 @@ Load and preprocess CAN datasets for the IDS system.
 import os
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional, Union
 import logging
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class CANDatasetLoader:
     """Handles loading and preprocessing of CAN bus datasets"""
     
-    def __init__(self, data_path: str):
-        self.data_path = Path(data_path)
+    def __init__(self, data_path: Union[str, Path]):
+        self.data_path: Path = Path(data_path)
         self.raw_data = None
         self.processed_data = None
         
-    def load_canmap_voltage_dataset(self, dataset_path: Optional[str] = None) -> pd.DataFrame:
+    def load_canmap_voltage_dataset(self, dataset_path: Optional[Union[str, Path]] = None) -> pd.DataFrame:
         """
         Load voltage traces from CANMAP dataset.
         Expects CSV files with timestamp, can_id, voltage_samples, and label columns.
@@ -58,7 +57,7 @@ class CANDatasetLoader:
             logger.warning("No data files found, creating sample data")
             return self._create_sample_voltage_data()
     
-    def load_road_dataset(self, dataset_path: Optional[str] = None) -> pd.DataFrame:
+    def load_road_dataset(self, dataset_path: Optional[Union[str, Path]] = None) -> pd.DataFrame:
         """
         Load ROAD CAN IDS dataset with labeled attack messages.
         Expects CSV with timestamp, can_id, dlc, data, and label columns.
@@ -210,7 +209,10 @@ class CANDatasetLoader:
             })
         
         df = pd.DataFrame(data)
-        logger.info(f"Generated voltage data: Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        if len(df) > 0:
+            logger.info(f"Generated voltage data: Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        else:
+            logger.info("Generated voltage data: Empty dataset")
         return df
     
     def _generate_can_voltage_waveform(self, time_vector: np.ndarray, 
@@ -269,6 +271,10 @@ class CANDatasetLoader:
         """Create sample CAN message data for testing"""
         logger.info(f"Creating {n_samples} sample CAN records")
         
+        # Handle edge cases
+        if n_samples <= 0:
+            return pd.DataFrame(columns=['timestamp', 'can_id', 'dlc', 'data', 'label', 'attack_type'])
+        
         data = []
         can_ids = [0x100, 0x200, 0x300, 0x400, 0x500, 0x600, 0x700]
         attack_types = ['normal', 'dos', 'fuzzing', 'spoofing', 'replay']
@@ -300,8 +306,11 @@ class CANDatasetLoader:
             })
         
         df = pd.DataFrame(data)
-        logger.info(f"Generated CAN data: {len(df)} messages, "
-                   f"Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        if len(df) > 0:
+            logger.info(f"Generated CAN data: {len(df)} messages, "
+                       f"Normal={np.sum(df['label']==0)}, Attack={np.sum(df['label']==1)}")
+        else:
+            logger.info("Generated CAN data: Empty dataset")
         return df
     
     def preprocess_voltage_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:

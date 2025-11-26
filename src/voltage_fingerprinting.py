@@ -10,8 +10,6 @@ from scipy import signal
 from scipy.stats import skew, kurtosis
 from typing import Dict, List, Tuple, Optional
 import logging
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -240,33 +238,77 @@ class VoltageFingerprinter:
         
         # Build average profile for each ECU
         for ecu_id, feature_list in ecu_features.items():
-            # Average all features
-            profile = {}
-            feature_keys = feature_list[0].keys()
-            
-            for key in feature_keys:
-                values = [f[key] for f in feature_list]
-                profile[f"{key}_mean"] = np.mean(values)
-                profile[f"{key}_std"] = np.std(values)
-            
-            self.ecu_profiles[ecu_id] = profile
-            logger.info(f"Created profile for ECU {ecu_id:#x} from {len(feature_list)} samples")
-        
-        self.trained = True
-        logger.info(f"Training complete. Profiles created for {len(self.ecu_profiles)} ECUs")
-    
-    def predict(self, voltage_signal: np.ndarray) -> Tuple[int, float]:
-        """
-        Predict the ECU ID from a voltage signal using enhanced statistical matching.
-        
-        Uses a combination of Mahalanobis distance and correlation-based similarity
-        to match voltage characteristics to known ECU profiles.
-        
-        Args:
-            voltage_signal: Voltage signal array
-            
-        Returns:
-            Tuple of (predicted_ecu_id, confidence)
+            # Extract features
+            features = self.extract_features(voltage_signal)
+
+            # Compute per-ECU similarity scores
+            ecu_scores = self._compute_scores_from_features(features)
+
+            profile[f"{key}_std"] = float(np.std(values))
+            best_ecu = max(ecu_scores.items(), key=lambda kv: kv[1])[0]
+            confidence = ecu_scores[best_ecu]
+
+            # Normalize confidence based on second-best match (discrimination margin)
+            sorted_scores = sorted(ecu_scores.values(), reverse=True)
+            if len(sorted_scores) > 1:
+                margin = sorted_scores[0] - sorted_scores[1]
+                # Boost confidence if there's a clear winner
+                confidence = min(1.0, confidence * (1.0 + margin))
+
+            return best_ecu, confidence
+
+        def _compute_scores_from_features(self, features: Dict[str, float]) -> Dict[int, float]:
+            """Compute similarity scores from already-extracted features.
+
+            Separated for reuse from `detect_anomaly` so we can compare a claimed
+            ECU's score against the best match without recomputing features.
+            """
+            ecu_scores: Dict[int, float] = {}
+
+            # Feature weights should match those used in predict
+            feature_weights = {
+                'rise_time': 3.0,
+                'fall_time': 3.0,
+                'overshoot': 2.5,
+                'ringing_freq': 2.0,
+                'dominant_frequency': 2.0,
+                'spectral_centroid': 1.8,
+                'settling_time': 2.2,
+                'peak_to_peak': 1.5,
+                'rms': 1.5,
+                'zero_crossing_rate': 1.3,
+                'num_peaks': 1.2,
+            }
+
+            for ecu_id, profile in self.ecu_profiles.items():
+                mahalanobis_distance = 0.0
+                weighted_distance = 0.0
+                count = 0
+
+                for key in features.keys():
+                    mean_key = f"{key}_mean"
+                    std_key = f"{key}_std"
+
+                    if mean_key in profile and std_key in profile:
+                        mean_val = profile[mean_key]
+                        std_val = profile[std_key] + 1e-8
+
+                        normalized_dist = abs(features[key] - mean_val) / std_val
+                        mahalanobis_distance += normalized_dist
+
+                        weight = feature_weights.get(key, 1.0)
+                        weighted_distance += weight * normalized_dist
+                        count += 1
+
+                if count > 0:
+                    avg_mahalanobis = mahalanobis_distance / count
+                    avg_weighted = weighted_distance / sum([feature_weights.get(k, 1.0) for k in features.keys()])
+
+                    combined_distance = 0.4 * avg_mahalanobis + 0.6 * avg_weighted
+                    similarity = np.exp(-combined_distance)
+                    ecu_scores[ecu_id] = similarity
+
+            return ecu_scores
         """
         if not self.trained:
             raise ValueError("Fingerprinter must be trained before prediction")
@@ -275,7 +317,7 @@ class VoltageFingerprinter:
         features = self.extract_features(voltage_signal)
         
         # Calculate similarity to each ECU profile using multiple metrics
-        ecu_scores = {}
+        ecu_scores: Dict[int, float] = {}
         
         for ecu_id, profile in self.ecu_profiles.items():
             # Metric 1: Mahalanobis-like distance (normalized by std deviation)
@@ -334,8 +376,16 @@ class VoltageFingerprinter:
             raise ValueError("No valid ECU profiles to compare against")
         
         # Find best match
-        best_ecu = max(ecu_scores, key=ecu_scores.get)
+        best_ecu = max(ecu_scores.items(), key=lambda kv: kv[1])[0]
         confidence = ecu_scores[best_ecu]
+
+        # If the claimed ECU has a nearly-equal score to the best, prefer it
+        # to reduce false positives on normal traffic (claimed hardware match).
+        claimed_confidence = ecu_scores.get(claimed_ecu_id, 0.0)
+        if claimed_confidence >= 0.9 * confidence:
+            # Treat as match: prefer claimed ECU and its confidence
+            best_ecu = claimed_ecu_id
+            confidence = claimed_confidence
         
         # Normalize confidence based on second-best match (discrimination margin)
         sorted_scores = sorted(ecu_scores.values(), reverse=True)
@@ -365,27 +415,45 @@ class VoltageFingerprinter:
                 - is_anomaly: True if mismatch detected (spoofing attack)
                 - anomaly_score: Confidence in the anomaly detection (0-1)
         """
-        predicted_ecu, confidence = self.predict(voltage_signal)
-        
+        # Compute per-ECU similarity scores so we can compare claimed vs best
+        features = self.extract_features(voltage_signal)
+        ecu_scores = self._compute_scores_from_features(features)
+
+        # Find best match and its confidence
+        best_ecu = max(ecu_scores.items(), key=lambda kv: kv[1])[0]
+        best_conf = ecu_scores[best_ecu]
+
+        # If the claimed ECU has a nearly-equal score to the best, prefer it
+        claimed_confidence = ecu_scores.get(claimed_ecu_id, 0.0)
+        if claimed_confidence >= 0.9 * best_conf:
+            predicted_ecu = claimed_ecu_id
+            confidence = claimed_confidence
+        else:
+            predicted_ecu = best_ecu
+            confidence = best_conf
+
         # Primary decision factor: Does predicted ECU match claimed ECU?
         if predicted_ecu != claimed_ecu_id:
             # ECU ID mismatch - strong indicator of spoofing attack
-            # Only flag if we're confident about the prediction
             if confidence >= self.threshold:
-                # High confidence in the mismatch - definitely anomalous
                 is_anomaly = True
                 anomaly_score = confidence
             else:
-                # Low confidence mismatch - could be noise or natural variation
-                # Be conservative: don't flag unless confidence is reasonable
-                is_anomaly = False
-                anomaly_score = confidence * 0.5  # Partial suspicion
+                # Consider margin (difference between best and second-best)
+                sorted_scores = sorted(ecu_scores.values(), reverse=True)
+                margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else 0.0
+
+                # If confidence is modest but margin is substantial, treat as anomaly.
+                if confidence >= max(0.25, self.threshold * 0.7) and margin >= 0.12:
+                    is_anomaly = True
+                    anomaly_score = confidence * (1.0 + margin)
+                else:
+                    is_anomaly = False
+                    anomaly_score = confidence * 0.5
         else:
             # ECU ID matches - this is the normal case
-            # Trust the match regardless of confidence level
-            # (voltage characteristics naturally vary due to temperature, load, etc.)
             is_anomaly = False
-            anomaly_score = 1.0 - confidence  # Lower score = less anomalous
+            anomaly_score = 1.0 - confidence
         
         return is_anomaly, anomaly_score
     

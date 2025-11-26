@@ -4,12 +4,10 @@ Baseline IDS models for comparison
 
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional, Any
 from collections import defaultdict, deque
 import time
 import logging
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -20,11 +18,11 @@ class BaselineIDS:
         self.name = name
         self.trained = False
     
-    def train(self, X: np.ndarray, y: np.ndarray):
+    def train(self, *args: Any, **kwargs: Any) -> Any:
         """Train the model"""
         raise NotImplementedError
     
-    def predict(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def predict(self, *args: Any, **kwargs: Any) -> Tuple[np.ndarray, np.ndarray]:
         """Get predictions and scores"""
         raise NotImplementedError
 
@@ -57,8 +55,8 @@ class TimingBasedIDS(BaselineIDS):
         # Calculate expected intervals (mean and std) for each CAN ID
         for can_id, intervals in self.message_intervals.items():
             if len(intervals) >= 10:  # Need enough samples
-                mean_interval = np.mean(intervals)
-                std_interval = np.std(intervals)
+                mean_interval = float(np.mean(intervals))
+                std_interval = float(np.std(intervals))
                 self.expected_intervals[can_id] = (mean_interval, std_interval)
                 
                 # Estimate clock skew (linear trend in intervals)
@@ -159,8 +157,8 @@ class FrequencyBasedIDS(BaselineIDS):
         # Calculate expected frequencies
         for can_id, freq_list in frequencies.items():
             if len(freq_list) >= 10:
-                mean_freq = np.mean(freq_list)
-                std_freq = np.std(freq_list)
+                mean_freq = float(np.mean(freq_list))
+                std_freq = float(np.std(freq_list))
                 self.expected_frequencies[can_id] = (mean_freq, std_freq)
         
         logger.info(f"Learned frequency profiles for {len(self.expected_frequencies)} CAN IDs")
