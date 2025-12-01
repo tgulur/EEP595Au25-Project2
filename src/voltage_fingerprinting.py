@@ -229,170 +229,83 @@ class VoltageFingerprinter:
         # Group signals by which ECU sent them
         ecu_features: Dict[int, List[Dict[str, float]]] = {}
         
-        for signal, ecu_id in zip(voltage_signals, ecu_ids):
-            features = self.extract_features(signal)
-            
+        for sig, ecu_id in zip(voltage_signals, ecu_ids):
+            features = self.extract_features(sig)
             if ecu_id not in ecu_features:
                 ecu_features[ecu_id] = []
             ecu_features[ecu_id].append(features)
         
-        # Build average profile for each ECU
+        # Build average profile for each ECU: compute mean/std per feature
         for ecu_id, feature_list in ecu_features.items():
-            # Extract features
-            features = self.extract_features(voltage_signal)
-
-            # Compute per-ECU similarity scores
-            ecu_scores = self._compute_scores_from_features(features)
-
-            profile[f"{key}_std"] = float(np.std(values))
-            best_ecu = max(ecu_scores.items(), key=lambda kv: kv[1])[0]
-            confidence = ecu_scores[best_ecu]
-
-            # Normalize confidence based on second-best match (discrimination margin)
-            sorted_scores = sorted(ecu_scores.values(), reverse=True)
-            if len(sorted_scores) > 1:
-                margin = sorted_scores[0] - sorted_scores[1]
-                # Boost confidence if there's a clear winner
-                confidence = min(1.0, confidence * (1.0 + margin))
-
-            return best_ecu, confidence
-
-        def _compute_scores_from_features(self, features: Dict[str, float]) -> Dict[int, float]:
-            """Compute similarity scores from already-extracted features.
-
-            Separated for reuse from `detect_anomaly` so we can compare a claimed
-            ECU's score against the best match without recomputing features.
-            """
-            ecu_scores: Dict[int, float] = {}
-
-            # Feature weights should match those used in predict
-            feature_weights = {
-                'rise_time': 3.0,
-                'fall_time': 3.0,
-                'overshoot': 2.5,
-                'ringing_freq': 2.0,
-                'dominant_frequency': 2.0,
-                'spectral_centroid': 1.8,
-                'settling_time': 2.2,
-                'peak_to_peak': 1.5,
-                'rms': 1.5,
-                'zero_crossing_rate': 1.3,
-                'num_peaks': 1.2,
-            }
-
-            for ecu_id, profile in self.ecu_profiles.items():
-                mahalanobis_distance = 0.0
-                weighted_distance = 0.0
-                count = 0
-
-                for key in features.keys():
-                    mean_key = f"{key}_mean"
-                    std_key = f"{key}_std"
-
-                    if mean_key in profile and std_key in profile:
-                        mean_val = profile[mean_key]
-                        std_val = profile[std_key] + 1e-8
-
-                        normalized_dist = abs(features[key] - mean_val) / std_val
-                        mahalanobis_distance += normalized_dist
-
-                        weight = feature_weights.get(key, 1.0)
-                        weighted_distance += weight * normalized_dist
-                        count += 1
-
-                if count > 0:
-                    avg_mahalanobis = mahalanobis_distance / count
-                    avg_weighted = weighted_distance / sum([feature_weights.get(k, 1.0) for k in features.keys()])
-
-                    combined_distance = 0.4 * avg_mahalanobis + 0.6 * avg_weighted
-                    similarity = np.exp(-combined_distance)
-                    ecu_scores[ecu_id] = similarity
-
-            return ecu_scores
-        """
-        if not self.trained:
-            raise ValueError("Fingerprinter must be trained before prediction")
+            if not feature_list:
+                continue
+            profile: Dict[str, float] = {}
+            keys = sorted(feature_list[0].keys())
+            for key in keys:
+                values = np.array([f.get(key, 0.0) for f in feature_list], dtype=float)
+                profile[f"{key}_mean"] = float(np.mean(values))
+                profile[f"{key}_std"] = float(np.std(values))
+            self.ecu_profiles[ecu_id] = profile
         
-        # Extract features
-        features = self.extract_features(voltage_signal)
-        
-        # Calculate similarity to each ECU profile using multiple metrics
+        self.trained = True
+    
+    def _compute_scores_from_features(self, features: Dict[str, float]) -> Dict[int, float]:
+        """Compute similarity scores from already-extracted features."""
         ecu_scores: Dict[int, float] = {}
         
+        feature_weights = {
+            'rise_time': 3.0,
+            'fall_time': 3.0,
+            'overshoot': 2.5,
+            'dominant_frequency': 2.0,
+            'spectral_centroid': 1.8,
+            'settling_time': 2.2,
+            'peak_to_peak': 1.5,
+            'rms': 1.5,
+            'zero_crossing_rate': 1.3,
+            'num_peaks': 1.2,
+        }
+        
         for ecu_id, profile in self.ecu_profiles.items():
-            # Metric 1: Mahalanobis-like distance (normalized by std deviation)
             mahalanobis_distance = 0.0
-            
-            # Metric 2: Weighted feature distance (some features are more distinctive)
             weighted_distance = 0.0
-            
-            # Feature weights based on discriminative power
-            # (rise/fall times, ringing characteristics are most distinctive)
-            feature_weights = {
-                'rise_time': 3.0,        # Very distinctive
-                'fall_time': 3.0,
-                'overshoot': 2.5,
-                'ringing_freq': 2.0,     # Hardware-specific
-                'dominant_frequency': 2.0,
-                'spectral_centroid': 1.8,
-                'settling_time': 2.2,
-                'peak_to_peak': 1.5,
-                'rms': 1.5,
-                'zero_crossing_rate': 1.3,
-                'num_peaks': 1.2,
-            }
-            
             count = 0
-            for key in features.keys():
+            
+            for key, val in features.items():
                 mean_key = f"{key}_mean"
                 std_key = f"{key}_std"
-                
                 if mean_key in profile and std_key in profile:
                     mean_val = profile[mean_key]
-                    std_val = profile[std_key] + 1e-8  # Avoid division by zero
-                    
-                    # Normalized distance
-                    normalized_dist = abs(features[key] - mean_val) / std_val
+                    std_val = profile[std_key] + 1e-8
+                    normalized_dist = abs(val - mean_val) / std_val
                     mahalanobis_distance += normalized_dist
-                    
-                    # Weighted distance
                     weight = feature_weights.get(key, 1.0)
                     weighted_distance += weight * normalized_dist
                     count += 1
             
             if count > 0:
                 avg_mahalanobis = mahalanobis_distance / count
-                avg_weighted = weighted_distance / sum([feature_weights.get(k, 1.0) for k in features.keys()])
-                
-                # Combine both metrics (weighted average)
+                total_weight = sum(feature_weights.get(k, 1.0) for k in features.keys()) or 1.0
+                avg_weighted = weighted_distance / total_weight
                 combined_distance = 0.4 * avg_mahalanobis + 0.6 * avg_weighted
-                
-                # Convert distance to similarity score (0 to 1)
-                # Using exponential decay for better discrimination
-                similarity = np.exp(-combined_distance)
+                similarity = float(np.exp(-combined_distance))
                 ecu_scores[ecu_id] = similarity
         
-        if not ecu_scores:
-            raise ValueError("No valid ECU profiles to compare against")
+        return ecu_scores
+    
+    def predict(self, voltage_signal: np.ndarray) -> Tuple[int, float]:
+        """Predict the most likely ECU for a voltage signal."""
+        if not self.trained:
+            raise ValueError("Fingerprinter must be trained before prediction")
         
-        # Find best match
+        features = self.extract_features(voltage_signal)
+        ecu_scores = self._compute_scores_from_features(features)
+        
+        if not ecu_scores:
+            raise ValueError("No ECU profiles available")
+        
         best_ecu = max(ecu_scores.items(), key=lambda kv: kv[1])[0]
         confidence = ecu_scores[best_ecu]
-
-        # If the claimed ECU has a nearly-equal score to the best, prefer it
-        # to reduce false positives on normal traffic (claimed hardware match).
-        claimed_confidence = ecu_scores.get(claimed_ecu_id, 0.0)
-        if claimed_confidence >= 0.9 * confidence:
-            # Treat as match: prefer claimed ECU and its confidence
-            best_ecu = claimed_ecu_id
-            confidence = claimed_confidence
-        
-        # Normalize confidence based on second-best match (discrimination margin)
-        sorted_scores = sorted(ecu_scores.values(), reverse=True)
-        if len(sorted_scores) > 1:
-            margin = sorted_scores[0] - sorted_scores[1]
-            # Boost confidence if there's a clear winner
-            confidence = min(1.0, confidence * (1.0 + margin))
         
         return best_ecu, confidence
     
